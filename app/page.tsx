@@ -8,6 +8,7 @@ import GrowthChart from "@/components/GrowthChart";
 import DataTable from "@/components/DataTable";
 import AddDataModal from "@/components/AddDataModal";
 import GrafanaSync from "@/components/GrafanaSync";
+import BrandPerformanceSection from "@/components/BrandPerformanceSection";
 
 type FinancialView = "monthly" | "daily" | "annual";
 
@@ -213,6 +214,9 @@ export default function Dashboard() {
           {/* Grafana Sync widget in chart grid */}
           <GrafanaSync onSynced={load} />
         </div>
+
+        {/* ── Brand Performance ─────────────────────────────────────────────── */}
+        <BrandPerformanceSection data={data} />
 
         {/* ── Data Table ────────────────────────────────────────────────────── */}
         {data.length > 0 && <DataTable data={data} />}

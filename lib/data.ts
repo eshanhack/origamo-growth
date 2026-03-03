@@ -70,6 +70,13 @@ const SEED_DATA: MonthlyData[] = [
     fees: 16280,
     topBrands: ["Drizzle", "CSGO500", "Cloudbet"],
     source: "manual",
+    brandBreakdown: [
+      { name: "Drizzle",  wager: 5360000, ggr: 88100,  fees: 4405 },
+      { name: "CSGO500",  wager: 5220000, ggr: -79400, fees: 0    },
+      { name: "Cloudbet", wager: 2220000, ggr: 58000,  fees: 2900 },
+      { name: "Betbolt",  wager: 1750000, ggr: 24800,  fees: 1240 },
+      { name: "Biggg",    wager: 1120000, ggr: 60000,  fees: 3000 },
+    ],
   },
   {
     id: "2026-01",
@@ -85,6 +92,13 @@ const SEED_DATA: MonthlyData[] = [
     fees: 25360,
     topBrands: ["Metaspins", "CSGO500", "Cloudbet"],
     source: "manual",
+    brandBreakdown: [
+      { name: "Metaspins", wager: 4340000, ggr: 109000, fees: 5450 },
+      { name: "CSGO500",   wager: 3660000, ggr: 173000, fees: 8650 },
+      { name: "Cloudbet",  wager: 1690000, ggr: 32400,  fees: 1620 },
+      { name: "Kirgo",     wager: 1230000, ggr: 70700,  fees: 3535 },
+      { name: "Gambana",   wager: 868000,  ggr: 13300,  fees: 665  },
+    ],
   },
   {
     id: "2026-02",
@@ -100,6 +114,13 @@ const SEED_DATA: MonthlyData[] = [
     fees: 15350,
     topBrands: ["Spartans", "Metaspins", "CSGO500"],
     source: "manual",
+    brandBreakdown: [
+      { name: "Metaspins", wager: 3790000, ggr: 50400,  fees: 2520 },
+      { name: "CSGO500",   wager: 2890000, ggr: -12500, fees: -625 },
+      { name: "Cloudbet",  wager: 1370000, ggr: 25800,  fees: 1290 },
+      { name: "Kirgo",     wager: 1320000, ggr: 21300,  fees: 1065 },
+      { name: "Chanced",   wager: 862000,  ggr: 18200,  fees: 910  },
+    ],
   },
 ];
 

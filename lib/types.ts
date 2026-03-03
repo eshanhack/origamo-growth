@@ -20,7 +20,15 @@ export interface MonthlyData {
   // Optional fields (populate as data becomes available)
   maxPlayerGgr?: number;  // Top single player GGR
   topBrands?: string[];   // e.g. ["Brand A", "Brand B", "Brand C"]
+  brandBreakdown?: BrandPerformance[];
   source?: "manual" | "grafana";
+}
+
+export interface BrandPerformance {
+  name: string;
+  wager: number;
+  ggr: number;
+  fees: number;
 }
 
 export interface MonthlyDataWithGrowth extends MonthlyData {
