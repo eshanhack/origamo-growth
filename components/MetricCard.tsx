@@ -9,8 +9,10 @@ interface MetricCardProps {
   growth: number | null;
   icon?: string;
   sub?: string;
-  /** When true, replaces the value with the MoM % and hides sub/badge */
+  /** When true, replaces the value with the period-change % and hides sub/badge */
   growthMode?: boolean;
+  /** Label shown next to the growth badge, e.g. "MoM" or "QoQ" */
+  changeLabel?: string;
 }
 
 export default function MetricCard({
@@ -19,6 +21,7 @@ export default function MetricCard({
   growth,
   sub,
   growthMode = false,
+  changeLabel = "MoM",
 }: MetricCardProps) {
   const positive = growth !== null && growth >= 0;
   const negative = growth !== null && growth < 0;
@@ -57,7 +60,7 @@ export default function MetricCard({
           >
             {fmtGrowth(growth)}
           </span>
-          <span className="text-[11px] text-gray-600">MoM</span>
+          <span className="text-[11px] text-gray-600">{changeLabel}</span>
         </div>
       )}
 
@@ -68,7 +71,7 @@ export default function MetricCard({
 
       {/* growthMode label */}
       {growthMode && (
-        <div className="text-[11px] text-gray-600 mt-auto">month-on-month</div>
+        <div className="text-[11px] text-gray-600 mt-auto">{changeLabel}</div>
       )}
     </div>
   );

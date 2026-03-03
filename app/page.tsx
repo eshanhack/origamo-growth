@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import clsx from "clsx";
 import { MonthlyDataWithGrowth } from "@/lib/types";
 import { fmt, fmtGrowth, growthColor } from "@/lib/format";
@@ -14,42 +14,129 @@ import GrowthInsights from "@/components/GrowthInsights";
 type FinancialView = "monthly" | "daily" | "annual";
 type Tab = "overview" | "brands" | "insights" | "data";
 
+// ── Quarterly aggregation ─────────────────────────────────────────
+function aggregateToQuarters(months: MonthlyDataWithGrowth[]): MonthlyDataWithGrowth[] {
+  if (!months.length) return [];
+
+  const groups = new Map<string, MonthlyDataWithGrowth[]>();
+  months.forEach((d) => {
+    const [year, mo] = d.id.split("-").map(Number);
+    const q = Math.ceil(mo / 3);
+    const key = `${year}-Q${q}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(d);
+  });
+
+  const keys = [...groups.keys()].sort();
+
+  const quarters: MonthlyDataWithGrowth[] = keys.map((key) => {
+    const ms      = groups.get(key)!;
+    const [year, ql] = key.split("-");
+    const totalWager = ms.reduce((s, m) => s + m.wager,      0);
+    const totalGGR   = ms.reduce((s, m) => s + m.ggr,        0);
+    const totalFees  = ms.reduce((s, m) => s + m.fees,       0);
+    const totalBets  = ms.reduce((s, m) => s + m.betsPlaced, 0);
+    const avgMAU     = Math.round(ms.reduce((s, m) => s + m.mau, 0) / ms.length);
+    const maxBrands  = Math.max(...ms.map((m) => m.activeBrands));
+    const edge       = totalWager > 0 ? totalGGR / totalWager : 0;
+
+    const dateStart = ms[0].dateStart;
+    const dateEnd   = ms[ms.length - 1].dateEnd;
+    const days = Math.max(
+      1,
+      Math.round((new Date(dateEnd).getTime() - new Date(dateStart).getTime()) / 86400000) + 1,
+    );
+
+    return {
+      id: key,
+      label: `${ql} ${year}`,
+      dateStart,
+      dateEnd,
+      mau: avgMAU,
+      activeBrands: maxBrands,
+      betsPlaced: totalBets,
+      effectiveEdge: edge,
+      wager: totalWager,
+      ggr: totalGGR,
+      fees: totalFees,
+      source: "manual" as const,
+      growth: { mau: null, activeBrands: null, betsPlaced: null, wager: null, ggr: null, fees: null },
+      daily:      { wager: totalWager / days, ggr: totalGGR / days, fees: totalFees / days },
+      annualized: { wager: totalWager * 4,    ggr: totalGGR * 4,    fees: totalFees * 4 },
+    };
+  });
+
+  // Quarter-over-quarter growth
+  const g = (a: number, b: number): number | null => (a > 0 ? ((b - a) / a) * 100 : null);
+  for (let i = 1; i < quarters.length; i++) {
+    const c = quarters[i], p = quarters[i - 1];
+    c.growth = {
+      mau:          g(p.mau,          c.mau),
+      activeBrands: g(p.activeBrands, c.activeBrands),
+      betsPlaced:   g(p.betsPlaced,   c.betsPlaced),
+      wager:        g(p.wager,        c.wager),
+      ggr:          g(p.ggr,          c.ggr),
+      fees:         g(p.fees,         c.fees),
+    };
+  }
+
+  return quarters;
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [data, setData] = useState<MonthlyDataWithGrowth[]>([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [financialView, setFinancialView] = useState<FinancialView>("monthly");
-  const [selectedMonthId, setSelectedMonthId] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
-  const [showValues, setShowValues] = useState(true);
+  const [data,             setData]             = useState<MonthlyDataWithGrowth[]>([]);
+  const [showAdd,          setShowAdd]          = useState(false);
+  const [lastRefresh,      setLastRefresh]      = useState<Date | null>(null);
+  const [financialView,    setFinancialView]    = useState<FinancialView>("monthly");
+  const [selectedMonthId,  setSelectedMonthId]  = useState<string>("");
+  const [activeTab,        setActiveTab]        = useState<Tab>("overview");
+  const [showValues,       setShowValues]       = useState(true);
+  const [quarterlyMode,    setQuarterlyMode]    = useState(false);
+  const [selectedQtrId,    setSelectedQtrId]    = useState<string>("");
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/data");
+      const res  = await fetch("/api/data");
       const json: MonthlyDataWithGrowth[] = await res.json();
       setData(json);
       setLastRefresh(new Date());
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   }, []);
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 30_000);
-    return () => clearInterval(interval);
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
   }, [load]);
 
-  // Default to latest month whenever data first loads
+  // Default selected month to latest
   useEffect(() => {
     if (data.length && !selectedMonthId) {
       setSelectedMonthId(data[data.length - 1].id);
     }
   }, [data, selectedMonthId]);
 
-  const selectedIdx  = data.findIndex((d) => d.id === selectedMonthId);
-  const selected     = selectedIdx >= 0 ? data[selectedIdx] : data[data.length - 1];
-  const selectedPrev = selectedIdx > 0  ? data[selectedIdx - 1] : undefined;
+  // Quarterly data
+  const quarterlyData = useMemo(() => aggregateToQuarters(data), [data]);
+
+  // Default selected quarter to latest
+  useEffect(() => {
+    if (quarterlyData.length && !quarterlyData.find((q) => q.id === selectedQtrId)) {
+      setSelectedQtrId(quarterlyData[quarterlyData.length - 1].id);
+    }
+  }, [quarterlyData, selectedQtrId]);
+
+  // Active data source & selection
+  const displayData     = quarterlyMode ? quarterlyData : data;
+  const activeId        = quarterlyMode ? selectedQtrId : selectedMonthId;
+  const setActiveId     = quarterlyMode ? setSelectedQtrId : setSelectedMonthId;
+  const selectedIdx     = displayData.findIndex((d) => d.id === activeId);
+  const selected        = selectedIdx >= 0 ? displayData[selectedIdx] : displayData[displayData.length - 1];
+  const selectedPrev    = selectedIdx > 0  ? displayData[selectedIdx - 1] : undefined;
+
+  const changeLabel     = quarterlyMode ? "QoQ" : "MoM";
+  const periodLabel     = quarterlyMode ? "Quarter" : "Month";
 
   function financialVal(row: MonthlyDataWithGrowth, key: "wager" | "ggr" | "fees"): number {
     if (financialView === "daily")  return row.daily[key];
@@ -57,21 +144,20 @@ export default function Dashboard() {
     return row[key];
   }
 
-  // Effective edge growth vs previous month
   const edgeGrowth =
     selected && selectedPrev && selectedPrev.effectiveEdge > 0
       ? ((selected.effectiveEdge - selectedPrev.effectiveEdge) / selectedPrev.effectiveEdge) * 100
       : null;
 
-  // ── Per-player efficiency metrics (for selected month) ────────────
-  const ggrPP    = selected ? selected.ggr         / selected.mau        : 0;
-  const wagerPP  = selected ? selected.wager        / selected.mau        : 0;
-  const betsPP   = selected ? selected.betsPlaced   / selected.mau        : 0;
-  const avgBet   = selected && selected.betsPlaced > 0 ? selected.wager / selected.betsPlaced : 0;
+  // Per-player efficiency
+  const ggrPP   = selected ? selected.ggr        / selected.mau        : 0;
+  const wagerPP = selected ? selected.wager       / selected.mau        : 0;
+  const betsPP  = selected ? selected.betsPlaced  / selected.mau        : 0;
+  const avgBet  = selected && selected.betsPlaced > 0 ? selected.wager / selected.betsPlaced : 0;
 
-  const prevGgrPP   = selectedPrev ? selectedPrev.ggr         / selectedPrev.mau        : null;
-  const prevWagerPP = selectedPrev ? selectedPrev.wager        / selectedPrev.mau        : null;
-  const prevBetsPP  = selectedPrev ? selectedPrev.betsPlaced   / selectedPrev.mau        : null;
+  const prevGgrPP   = selectedPrev ? selectedPrev.ggr        / selectedPrev.mau        : null;
+  const prevWagerPP = selectedPrev ? selectedPrev.wager       / selectedPrev.mau        : null;
+  const prevBetsPP  = selectedPrev ? selectedPrev.betsPlaced  / selectedPrev.mau        : null;
   const prevAvgBet  = selectedPrev && selectedPrev.betsPlaced > 0 ? selectedPrev.wager / selectedPrev.betsPlaced : null;
 
   function pctChg(prev: number | null, cur: number): number | null {
@@ -80,10 +166,10 @@ export default function Dashboard() {
   }
 
   const efficiencyMetrics = [
-    { label: "GGR / Player",   value: fmt(ggrPP,   "currency"), growth: pctChg(prevGgrPP,   ggrPP)   },
-    { label: "Wager / Player", value: fmt(wagerPP,  "currency"), growth: pctChg(prevWagerPP, wagerPP)  },
-    { label: "Bets / Player",  value: betsPP.toFixed(0),         growth: pctChg(prevBetsPP,  betsPP)   },
-    { label: "Avg Bet Size",   value: fmt(avgBet,   "currency"), growth: pctChg(prevAvgBet,  avgBet)   },
+    { label: "GGR / Player",   value: fmt(ggrPP,  "currency"), growth: pctChg(prevGgrPP,   ggrPP)  },
+    { label: "Wager / Player", value: fmt(wagerPP, "currency"), growth: pctChg(prevWagerPP, wagerPP) },
+    { label: "Bets / Player",  value: betsPP.toFixed(0),        growth: pctChg(prevBetsPP,  betsPP)  },
+    { label: "Avg Bet Size",   value: fmt(avgBet,  "currency"), growth: pctChg(prevAvgBet,  avgBet)  },
   ];
 
   return (
@@ -94,11 +180,8 @@ export default function Dashboard() {
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="origamo" className="h-7 w-auto" />
-          <span className="text-lg font-semibold text-[#CCFF00] tracking-tight -ml-1">
-            Growth
-          </span>
+          <span className="text-lg font-semibold text-[#CCFF00] tracking-tight -ml-1">Growth</span>
         </div>
-
         <div className="flex items-center gap-2">
           <p className="text-[11px] text-gray-600 mr-1">
             {lastRefresh ? `Updated ${lastRefresh.toLocaleTimeString()}` : ""}
@@ -106,29 +189,23 @@ export default function Dashboard() {
           <button
             onClick={load}
             className="text-xs text-gray-500 hover:text-white px-3 py-1.5 border border-gray-800 hover:border-gray-600 rounded-lg transition-colors"
-          >
-            ↻
-          </button>
+          >↻</button>
           <button
             onClick={() => setShowAdd(true)}
             className="text-xs bg-[#CCFF00] hover:bg-[#d4ff33] text-black px-4 py-1.5 rounded-lg font-semibold transition-colors"
-          >
-            + Add Month
-          </button>
+          >+ Add Month</button>
         </div>
       </header>
 
       {/* ── Tab bar ─────────────────────────────────────────────────── */}
       <div className="border-b border-gray-800 px-6">
         <div className="flex gap-0 max-w-7xl mx-auto">
-          {(
-            [
-              ["overview",  "Overview"],
-              ["brands",    "Brand Performance"],
-              ["insights",  "Growth Intelligence ✦"],
-              ["data",      "All-time Data"],
-            ] as [Tab, string][]
-          ).map(([tab, label]) => (
+          {([
+            ["overview", "Overview"],
+            ["brands",   "Brand Performance"],
+            ["insights", "Growth Intelligence ✦"],
+            ["data",     "All-time Data"],
+          ] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -136,86 +213,96 @@ export default function Dashboard() {
                 "px-5 py-3 text-sm font-medium border-b-2 transition-all duration-150",
                 activeTab === tab
                   ? "border-[#CCFF00] text-white"
-                  : "border-transparent text-gray-500 hover:text-gray-300"
+                  : "border-transparent text-gray-500 hover:text-gray-300",
               )}
-            >
-              {label}
-            </button>
+            >{label}</button>
           ))}
         </div>
       </div>
 
       <main className="px-6 py-6 max-w-7xl mx-auto">
 
-        {/* ── OVERVIEW TAB ──────────────────────────────────────────── */}
+        {/* ── OVERVIEW TAB ────────────────────────────────────────────── */}
         {activeTab === "overview" && (
           <div className="space-y-6">
 
-            {/* KPI cards */}
             <div className="space-y-3">
 
               {/* Controls row */}
               <div className="flex items-center justify-between px-0.5">
+
+                {/* Left: period selector + icon toggles */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 font-medium">Month</span>
+                  <span className="text-xs text-gray-500 font-medium">{periodLabel}</span>
+
+                  {/* Period dropdown */}
                   <div className="relative">
                     <select
                       value={selected?.id ?? ""}
-                      onChange={(e) => setSelectedMonthId(e.target.value)}
+                      onChange={(e) => setActiveId(e.target.value)}
                       className="appearance-none bg-gray-800 border border-gray-700 text-white text-xs font-medium rounded-lg pl-3 pr-7 py-1.5 focus:outline-none focus:border-gray-500 cursor-pointer"
                     >
-                      {[...data].reverse().map((m) => (
+                      {[...displayData].reverse().map((m) => (
                         <option key={m.id} value={m.id}>{m.label}</option>
                       ))}
                     </select>
                     <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">▾</span>
                   </div>
 
-                  {/* Eye toggle — switches between actual values and MoM % */}
+                  {/* ── Eye toggle ── */}
                   <button
                     onClick={() => setShowValues((v) => !v)}
-                    title={showValues ? "Show MoM growth" : "Show values"}
+                    title={showValues ? "Show period-on-period growth" : "Show values"}
                     className={clsx(
                       "flex items-center justify-center w-[30px] h-[30px] rounded-lg border transition-all duration-200",
                       showValues
                         ? "border-gray-700 text-gray-500 hover:text-gray-300 hover:border-gray-600"
-                        : "border-[#CCFF00]/30 text-[#CCFF00] bg-[#CCFF00]/5"
+                        : "border-[#CCFF00]/30 text-[#CCFF00] bg-[#CCFF00]/5",
                     )}
                   >
-                    {/* Animated eye: open and closed icons cross-fade */}
                     <div className="relative w-[15px] h-[15px]">
-                      {/* Open eye */}
-                      <svg
-                        viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" strokeWidth="2"
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                         strokeLinecap="round" strokeLinejoin="round"
                         className="absolute inset-0 w-full h-full transition-all duration-200"
-                        style={{
-                          opacity: showValues ? 1 : 0,
-                          transform: showValues ? "scale(1)" : "scale(0.5)",
-                        }}
+                        style={{ opacity: showValues ? 1 : 0, transform: showValues ? "scale(1)" : "scale(0.5)" }}
                       >
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                         <circle cx="12" cy="12" r="3" />
                       </svg>
-                      {/* Closed / eye-off */}
-                      <svg
-                        viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" strokeWidth="2"
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                         strokeLinecap="round" strokeLinejoin="round"
                         className="absolute inset-0 w-full h-full transition-all duration-200"
-                        style={{
-                          opacity: showValues ? 0 : 1,
-                          transform: showValues ? "scale(0.5)" : "scale(1)",
-                        }}
+                        style={{ opacity: showValues ? 0 : 1, transform: showValues ? "scale(0.5)" : "scale(1)" }}
                       >
                         <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
                         <line x1="1" y1="1" x2="23" y2="23" />
                       </svg>
                     </div>
                   </button>
+
+                  {/* ── Quarter toggle ── */}
+                  <button
+                    onClick={() => setQuarterlyMode((v) => !v)}
+                    title={quarterlyMode ? "Switch to monthly view" : "Switch to quarterly view"}
+                    className={clsx(
+                      "flex items-center justify-center w-[30px] h-[30px] rounded-lg border transition-all duration-200",
+                      quarterlyMode
+                        ? "border-[#CCFF00]/30 text-[#CCFF00] bg-[#CCFF00]/5"
+                        : "border-gray-700 text-gray-500 hover:text-gray-300 hover:border-gray-600",
+                    )}
+                  >
+                    {/* Quarter-pie icon: full circle outline + top-right quarter filled */}
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
+                      strokeLinecap="round" strokeLinejoin="round"
+                      className="w-[15px] h-[15px] transition-all duration-200"
+                    >
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 12 L12 3 A9 9 0 0 1 21 12 Z" fill="currentColor" stroke="none" />
+                    </svg>
+                  </button>
                 </div>
 
+                {/* Right: financial view toggle */}
                 <div className="flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg p-0.5">
                   {(["monthly", "daily", "annual"] as const).map((mode) => (
                     <button
@@ -225,10 +312,12 @@ export default function Dashboard() {
                         "px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150",
                         financialView === mode
                           ? "bg-gray-700 text-white shadow-sm"
-                          : "text-gray-500 hover:text-gray-300"
+                          : "text-gray-500 hover:text-gray-300",
                       )}
                     >
-                      {mode === "monthly" ? "Monthly" : mode === "daily" ? "Daily" : "Annualised"}
+                      {mode === "monthly"
+                        ? (quarterlyMode ? "Quarterly" : "Monthly")
+                        : mode === "daily" ? "Daily" : "Annualised"}
                     </button>
                   ))}
                 </div>
@@ -244,6 +333,7 @@ export default function Dashboard() {
                       growth={selected.growth.mau}
                       sub={selectedPrev ? `prev ${fmt(selectedPrev.mau, "compact")}` : undefined}
                       growthMode={!showValues}
+                      changeLabel={changeLabel}
                     />
                     <MetricCard
                       label="Effective Edge"
@@ -251,6 +341,7 @@ export default function Dashboard() {
                       growth={edgeGrowth}
                       sub={selectedPrev ? `prev ${(selectedPrev.effectiveEdge * 100).toFixed(2)}%` : undefined}
                       growthMode={!showValues}
+                      changeLabel={changeLabel}
                     />
                     <MetricCard
                       label="Bets Placed"
@@ -258,6 +349,7 @@ export default function Dashboard() {
                       growth={selected.growth.betsPlaced}
                       sub={selectedPrev ? `prev ${fmt(selectedPrev.betsPlaced, "compact")}` : undefined}
                       growthMode={!showValues}
+                      changeLabel={changeLabel}
                     />
                     <MetricCard
                       label="Wager"
@@ -265,17 +357,15 @@ export default function Dashboard() {
                       growth={selected.growth.wager}
                       sub={financialView === "monthly" ? `daily avg ${fmt(selected.daily.wager, "currency")}` : undefined}
                       growthMode={!showValues}
+                      changeLabel={changeLabel}
                     />
                     <MetricCard
                       label="GGR"
                       value={fmt(financialVal(selected, "ggr"), "currency")}
                       growth={selected.growth.ggr}
-                      sub={
-                        financialView === "monthly"
-                          ? `${(selected.effectiveEdge * 100).toFixed(2)}% edge`
-                          : undefined
-                      }
+                      sub={financialView === "monthly" ? `${(selected.effectiveEdge * 100).toFixed(2)}% edge` : undefined}
                       growthMode={!showValues}
+                      changeLabel={changeLabel}
                     />
                     <MetricCard
                       label="Platform Fees"
@@ -287,6 +377,7 @@ export default function Dashboard() {
                           : undefined
                       }
                       growthMode={!showValues}
+                      changeLabel={changeLabel}
                     />
                   </>
                 )}
@@ -295,27 +386,15 @@ export default function Dashboard() {
               {/* Efficiency ribbon */}
               {selected && (
                 <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl flex items-stretch overflow-hidden">
-                  {/* Label */}
                   <div className="px-5 py-4 flex flex-col justify-center bg-gray-900/60 border-r border-gray-800/60 shrink-0">
-                    <div className="text-[9px] font-bold uppercase tracking-widest text-gray-600">
-                      Per Player
-                    </div>
-                    <div className="text-[9px] text-gray-700 mt-0.5">
-                      {selected.label}
-                    </div>
+                    <div className="text-[9px] font-bold uppercase tracking-widest text-gray-600">Per Player</div>
+                    <div className="text-[9px] text-gray-700 mt-0.5">{selected.label}</div>
                   </div>
-
-                  {/* Metrics */}
                   <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-800/60">
                     {efficiencyMetrics.map(({ label, value, growth }) => (
                       <div key={label} className="px-5 py-4">
                         <div className="text-[10px] text-gray-600 mb-1">{label}</div>
-                        <div
-                          className={clsx(
-                            "text-sm font-bold transition-all duration-200",
-                            showValues ? "text-white" : growthColor(growth)
-                          )}
-                        >
+                        <div className={clsx("text-sm font-bold transition-all duration-200", showValues ? "text-white" : growthColor(growth))}>
                           {showValues ? value : fmtGrowth(growth)}
                         </div>
                         {showValues && (
@@ -330,36 +409,31 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Charts */}
+            {/* Charts — switch to quarterly data when in quarterly mode */}
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-              <GrowthChart data={data} metric="ggr"        title="GGR"            color="#22c55e" valueStyle="currency" />
-              <GrowthChart data={data} metric="wager"      title="Total Wager"     color="#8b5cf6" valueStyle="currency" />
-              <GrowthChart data={data} metric="fees"       title="Platform Fees"   color="#3b82f6" valueStyle="currency" />
-              <GrowthChart data={data} metric="mau"        title="Active Players"  color="#f59e0b" valueStyle="compact"  />
-              <GrowthChart data={data} metric="betsPlaced" title="Bets Placed"     color="#ec4899" valueStyle="compact"  />
+              <GrowthChart data={displayData} metric="ggr"        title="GGR"           color="#22c55e" valueStyle="currency" />
+              <GrowthChart data={displayData} metric="wager"      title="Total Wager"    color="#8b5cf6" valueStyle="currency" />
+              <GrowthChart data={displayData} metric="fees"       title="Platform Fees"  color="#3b82f6" valueStyle="currency" />
+              <GrowthChart data={displayData} metric="mau"        title="Active Players" color="#f59e0b" valueStyle="compact"  />
+              <GrowthChart data={displayData} metric="betsPlaced" title="Bets Placed"    color="#ec4899" valueStyle="compact"  />
             </div>
 
           </div>
         )}
 
-        {/* ── BRAND PERFORMANCE TAB ─────────────────────────────────── */}
-        {activeTab === "brands" && (
-          <BrandPerformanceSection data={data} />
-        )}
+        {/* ── BRAND PERFORMANCE TAB ───────────────────────────────────── */}
+        {activeTab === "brands" && <BrandPerformanceSection data={data} />}
 
-        {/* ── GROWTH INTELLIGENCE TAB ───────────────────────────────── */}
-        {activeTab === "insights" && (
-          <GrowthInsights data={data} />
-        )}
+        {/* ── GROWTH INTELLIGENCE TAB ─────────────────────────────────── */}
+        {activeTab === "insights" && <GrowthInsights data={data} />}
 
-        {/* ── ALL-TIME DATA TAB ─────────────────────────────────────── */}
+        {/* ── ALL-TIME DATA TAB ───────────────────────────────────────── */}
         {activeTab === "data" && (
           <div className="space-y-4 pb-6">
-            {data.length > 0 ? (
-              <DataTable data={data} />
-            ) : (
-              <p className="text-sm text-gray-600 py-12 text-center">No data yet.</p>
-            )}
+            {data.length > 0
+              ? <DataTable data={data} />
+              : <p className="text-sm text-gray-600 py-12 text-center">No data yet.</p>
+            }
             <div className="text-center text-[11px] text-gray-700">
               Data in{" "}
               <code className="bg-gray-800/60 px-1 rounded text-gray-500">data/metrics.json</code>
@@ -368,9 +442,7 @@ export default function Dashboard() {
         )}
       </main>
 
-      {showAdd && (
-        <AddDataModal onSaved={load} onClose={() => setShowAdd(false)} />
-      )}
+      {showAdd && <AddDataModal onSaved={load} onClose={() => setShowAdd(false)} />}
     </div>
   );
 }
