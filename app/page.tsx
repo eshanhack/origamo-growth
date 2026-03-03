@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [financialView, setFinancialView] = useState<FinancialView>("monthly");
   const [selectedMonthId, setSelectedMonthId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [showValues, setShowValues] = useState(true);
 
   const load = useCallback(async () => {
     try {
@@ -169,6 +170,50 @@ export default function Dashboard() {
                     </select>
                     <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">▾</span>
                   </div>
+
+                  {/* Eye toggle — switches between actual values and MoM % */}
+                  <button
+                    onClick={() => setShowValues((v) => !v)}
+                    title={showValues ? "Show MoM growth" : "Show values"}
+                    className={clsx(
+                      "flex items-center justify-center w-[30px] h-[30px] rounded-lg border transition-all duration-200",
+                      showValues
+                        ? "border-gray-700 text-gray-500 hover:text-gray-300 hover:border-gray-600"
+                        : "border-[#CCFF00]/30 text-[#CCFF00] bg-[#CCFF00]/5"
+                    )}
+                  >
+                    {/* Animated eye: open and closed icons cross-fade */}
+                    <div className="relative w-[15px] h-[15px]">
+                      {/* Open eye */}
+                      <svg
+                        viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="2"
+                        strokeLinecap="round" strokeLinejoin="round"
+                        className="absolute inset-0 w-full h-full transition-all duration-200"
+                        style={{
+                          opacity: showValues ? 1 : 0,
+                          transform: showValues ? "scale(1)" : "scale(0.5)",
+                        }}
+                      >
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      {/* Closed / eye-off */}
+                      <svg
+                        viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="2"
+                        strokeLinecap="round" strokeLinejoin="round"
+                        className="absolute inset-0 w-full h-full transition-all duration-200"
+                        style={{
+                          opacity: showValues ? 0 : 1,
+                          transform: showValues ? "scale(0.5)" : "scale(1)",
+                        }}
+                      >
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                        <line x1="1" y1="1" x2="23" y2="23" />
+                      </svg>
+                    </div>
+                  </button>
                 </div>
 
                 <div className="flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg p-0.5">
@@ -198,24 +243,28 @@ export default function Dashboard() {
                       value={fmt(selected.mau, "compact")}
                       growth={selected.growth.mau}
                       sub={selectedPrev ? `prev ${fmt(selectedPrev.mau, "compact")}` : undefined}
+                      growthMode={!showValues}
                     />
                     <MetricCard
                       label="Effective Edge"
                       value={`${(selected.effectiveEdge * 100).toFixed(2)}%`}
                       growth={edgeGrowth}
                       sub={selectedPrev ? `prev ${(selectedPrev.effectiveEdge * 100).toFixed(2)}%` : undefined}
+                      growthMode={!showValues}
                     />
                     <MetricCard
                       label="Bets Placed"
                       value={fmt(selected.betsPlaced, "compact")}
                       growth={selected.growth.betsPlaced}
                       sub={selectedPrev ? `prev ${fmt(selectedPrev.betsPlaced, "compact")}` : undefined}
+                      growthMode={!showValues}
                     />
                     <MetricCard
                       label="Wager"
                       value={fmt(financialVal(selected, "wager"), "currency")}
                       growth={selected.growth.wager}
                       sub={financialView === "monthly" ? `daily avg ${fmt(selected.daily.wager, "currency")}` : undefined}
+                      growthMode={!showValues}
                     />
                     <MetricCard
                       label="GGR"
@@ -226,6 +275,7 @@ export default function Dashboard() {
                           ? `${(selected.effectiveEdge * 100).toFixed(2)}% edge`
                           : undefined
                       }
+                      growthMode={!showValues}
                     />
                     <MetricCard
                       label="Platform Fees"
@@ -236,6 +286,7 @@ export default function Dashboard() {
                           ? `${((selected.fees / selected.ggr) * 100).toFixed(1)}% of GGR`
                           : undefined
                       }
+                      growthMode={!showValues}
                     />
                   </>
                 )}
@@ -259,10 +310,19 @@ export default function Dashboard() {
                     {efficiencyMetrics.map(({ label, value, growth }) => (
                       <div key={label} className="px-5 py-4">
                         <div className="text-[10px] text-gray-600 mb-1">{label}</div>
-                        <div className="text-sm font-bold text-white">{value}</div>
-                        <div className={clsx("text-[11px] font-semibold mt-0.5", growthColor(growth))}>
-                          {fmtGrowth(growth)}
+                        <div
+                          className={clsx(
+                            "text-sm font-bold transition-all duration-200",
+                            showValues ? "text-white" : growthColor(growth)
+                          )}
+                        >
+                          {showValues ? value : fmtGrowth(growth)}
                         </div>
+                        {showValues && (
+                          <div className={clsx("text-[11px] font-semibold mt-0.5", growthColor(growth))}>
+                            {fmtGrowth(growth)}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

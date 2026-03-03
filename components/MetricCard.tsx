@@ -9,6 +9,8 @@ interface MetricCardProps {
   growth: number | null;
   icon?: string;
   sub?: string;
+  /** When true, replaces the value with the MoM % and hides sub/badge */
+  growthMode?: boolean;
 }
 
 export default function MetricCard({
@@ -16,6 +18,7 @@ export default function MetricCard({
   value,
   growth,
   sub,
+  growthMode = false,
 }: MetricCardProps) {
   const positive = growth !== null && growth >= 0;
   const negative = growth !== null && growth < 0;
@@ -29,26 +32,43 @@ export default function MetricCard({
         {label}
       </span>
 
-      <div className="text-[28px] font-bold text-white tracking-tight leading-none">
-        {value}
+      {/* Value — or growth % when in growthMode */}
+      <div
+        className={clsx(
+          "text-[28px] font-bold tracking-tight leading-none transition-all duration-200",
+          growthMode
+            ? positive ? "text-emerald-400" : negative ? "text-red-400" : "text-gray-500"
+            : "text-white"
+        )}
+      >
+        {growthMode ? fmtGrowth(growth) : value}
       </div>
 
-      <div className="flex items-center gap-2 mt-auto">
-        <span
-          className={clsx(
-            "inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full",
-            positive && "bg-[#CCFF00]/10 text-[#CCFF00] ring-1 ring-[#CCFF00]/20",
-            negative && "bg-red-500/10 text-red-400 ring-1 ring-red-500/20",
-            !positive && !negative && "bg-gray-800 text-gray-500"
-          )}
-        >
-          {fmtGrowth(growth)}
-        </span>
-        <span className="text-[11px] text-gray-600">MoM</span>
-      </div>
+      {/* MoM badge — hidden in growthMode (value already IS the growth) */}
+      {!growthMode && (
+        <div className="flex items-center gap-2 mt-auto">
+          <span
+            className={clsx(
+              "inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full",
+              positive && "bg-[#CCFF00]/10 text-[#CCFF00] ring-1 ring-[#CCFF00]/20",
+              negative && "bg-red-500/10 text-red-400 ring-1 ring-red-500/20",
+              !positive && !negative && "bg-gray-800 text-gray-500"
+            )}
+          >
+            {fmtGrowth(growth)}
+          </span>
+          <span className="text-[11px] text-gray-600">MoM</span>
+        </div>
+      )}
 
-      {sub && (
+      {/* Sub text — hidden in growthMode */}
+      {!growthMode && sub && (
         <div className="text-[11px] text-gray-600 truncate">{sub}</div>
+      )}
+
+      {/* growthMode label */}
+      {growthMode && (
+        <div className="text-[11px] text-gray-600 mt-auto">month-on-month</div>
       )}
     </div>
   );
