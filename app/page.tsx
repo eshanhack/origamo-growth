@@ -10,6 +10,7 @@ import DataTable from "@/components/DataTable";
 import AddDataModal from "@/components/AddDataModal";
 import BrandPerformanceSection from "@/components/BrandPerformanceSection";
 import GrowthInsights from "@/components/GrowthInsights";
+import PasswordGate from "@/components/PasswordGate";
 
 type FinancialView = "monthly" | "daily" | "annual";
 type Tab = "overview" | "brands" | "insights" | "data";
@@ -173,6 +174,7 @@ export default function Dashboard() {
   ];
 
   return (
+    <PasswordGate>
     <div className="min-h-screen bg-[#0a0a0a] text-gray-100">
 
       {/* ── Header ──────────────────────────────────────────────────── */}
@@ -444,5 +446,6 @@ export default function Dashboard() {
 
       {showAdd && <AddDataModal onSaved={load} onClose={() => setShowAdd(false)} />}
     </div>
+    </PasswordGate>
   );
 }
