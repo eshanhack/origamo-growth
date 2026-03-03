@@ -12,7 +12,7 @@ import BrandPerformanceSection from "@/components/BrandPerformanceSection";
 import GrowthInsights from "@/components/GrowthInsights";
 
 type FinancialView = "monthly" | "daily" | "annual";
-type Tab = "overview" | "insights";
+type Tab = "overview" | "brands" | "insights" | "data";
 
 export default function Dashboard() {
   const [data, setData] = useState<MonthlyDataWithGrowth[]>([]);
@@ -120,7 +120,14 @@ export default function Dashboard() {
       {/* ── Tab bar ─────────────────────────────────────────────────── */}
       <div className="border-b border-gray-800 px-6">
         <div className="flex gap-0 max-w-7xl mx-auto">
-          {(["overview", "insights"] as const).map((tab) => (
+          {(
+            [
+              ["overview",  "Overview"],
+              ["brands",    "Brand Performance"],
+              ["insights",  "Growth Intelligence ✦"],
+              ["data",      "All-time Data"],
+            ] as [Tab, string][]
+          ).map(([tab, label]) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -131,7 +138,7 @@ export default function Dashboard() {
                   : "border-transparent text-gray-500 hover:text-gray-300"
               )}
             >
-              {tab === "overview" ? "Overview" : "Growth Intelligence ✦"}
+              {label}
             </button>
           ))}
         </div>
@@ -272,23 +279,32 @@ export default function Dashboard() {
               <GrowthChart data={data} metric="betsPlaced" title="Bets Placed"     color="#ec4899" valueStyle="compact"  />
             </div>
 
-            {/* Brand Performance */}
-            <BrandPerformanceSection data={data} />
+          </div>
+        )}
 
-            {/* Historical Data */}
-            {data.length > 0 && <DataTable data={data} />}
+        {/* ── BRAND PERFORMANCE TAB ─────────────────────────────────── */}
+        {activeTab === "brands" && (
+          <BrandPerformanceSection data={data} />
+        )}
 
-            {/* Footer */}
-            <div className="text-center text-[11px] text-gray-700 pb-4">
+        {/* ── GROWTH INTELLIGENCE TAB ───────────────────────────────── */}
+        {activeTab === "insights" && (
+          <GrowthInsights data={data} />
+        )}
+
+        {/* ── ALL-TIME DATA TAB ─────────────────────────────────────── */}
+        {activeTab === "data" && (
+          <div className="space-y-4 pb-6">
+            {data.length > 0 ? (
+              <DataTable data={data} />
+            ) : (
+              <p className="text-sm text-gray-600 py-12 text-center">No data yet.</p>
+            )}
+            <div className="text-center text-[11px] text-gray-700">
               Data in{" "}
               <code className="bg-gray-800/60 px-1 rounded text-gray-500">data/metrics.json</code>
             </div>
           </div>
-        )}
-
-        {/* ── INSIGHTS TAB ──────────────────────────────────────────── */}
-        {activeTab === "insights" && (
-          <GrowthInsights data={data} />
         )}
       </main>
 
