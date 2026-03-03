@@ -66,7 +66,7 @@ export default function Dashboard() {
         <div className="flex items-center gap-3">
           {/* Logo: full origamo mark + wordmark, then "Growth" appended */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="origamo" className="h-7 w-auto" />
+          <img src="/logo.png" alt="origamo" className="h-7 w-auto" />
           <span className="text-lg font-semibold text-[#CCFF00] tracking-tight -ml-1">
             Growth
           </span>

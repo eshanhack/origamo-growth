@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { fmtGrowth, growthColor } from "@/lib/format";
+import { fmtGrowth } from "@/lib/format";
 
 interface MetricCardProps {
   label: string;
@@ -15,33 +15,41 @@ export default function MetricCard({
   label,
   value,
   growth,
-  icon,
   sub,
 }: MetricCardProps) {
+  const positive = growth !== null && growth >= 0;
+  const negative = growth !== null && growth < 0;
+
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-          {label}
-        </span>
-        {icon && <span className="text-xl">{icon}</span>}
+    <div className="relative bg-[#111111] border border-gray-700/50 rounded-xl p-5 flex flex-col gap-3 overflow-hidden">
+      {/* Lime top accent bar */}
+      <div className="absolute top-0 left-0 right-0 h-[3px] bg-[#CCFF00] rounded-t-xl" />
+
+      <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500 pt-1">
+        {label}
+      </span>
+
+      <div className="text-[28px] font-bold text-white tracking-tight leading-none">
+        {value}
       </div>
 
-      <div className="text-2xl font-bold text-white">{value}</div>
-
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mt-auto">
         <span
           className={clsx(
-            "text-sm font-semibold",
-            growthColor(growth)
+            "inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full",
+            positive && "bg-[#CCFF00]/10 text-[#CCFF00] ring-1 ring-[#CCFF00]/20",
+            negative && "bg-red-500/10 text-red-400 ring-1 ring-red-500/20",
+            !positive && !negative && "bg-gray-800 text-gray-500"
           )}
         >
           {fmtGrowth(growth)}
         </span>
-        <span className="text-xs text-gray-500">MoM</span>
+        <span className="text-[11px] text-gray-600">MoM</span>
       </div>
 
-      {sub && <div className="text-xs text-gray-500">{sub}</div>}
+      {sub && (
+        <div className="text-[11px] text-gray-600 truncate">{sub}</div>
+      )}
     </div>
   );
 }
