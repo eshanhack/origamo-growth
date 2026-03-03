@@ -27,7 +27,7 @@ function aggregateToQuarters(months: MonthlyDataWithGrowth[]): MonthlyDataWithGr
     groups.get(key)!.push(d);
   });
 
-  const keys = [...groups.keys()].sort();
+  const keys = Array.from(groups.keys()).sort();
 
   const quarters: MonthlyDataWithGrowth[] = keys.map((key) => {
     const ms      = groups.get(key)!;
