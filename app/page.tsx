@@ -69,9 +69,14 @@ export default function Dashboard() {
       <main className="px-6 py-6 space-y-6 max-w-7xl mx-auto">
         {/* ── Latest month banner ───────────────────────────────────────────── */}
         {latest && (
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex items-center gap-3 text-sm flex-wrap">
             <span className="text-gray-400">Latest period:</span>
             <span className="font-semibold text-white">{latest.label}</span>
+            {latest.topBrands && latest.topBrands.length > 0 && (
+              <span className="text-gray-500 text-xs">
+                Top brands: {latest.topBrands.join(" · ")}
+              </span>
+            )}
             {latest.source === "grafana" && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-300 font-medium">
                 auto-synced
@@ -156,7 +161,7 @@ export default function Dashboard() {
             metric="mau"
             title="Active Players (MAU)"
             color="#f59e0b"
-            valueStyle="number"
+            valueStyle="compact"
           />
           <GrowthChart
             data={data}

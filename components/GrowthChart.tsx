@@ -37,7 +37,7 @@ const CustomTooltip = ({ active, payload, label, valueStyle }: any) => {
         (entry: any) => (
           <p key={entry.name} style={{ color: entry.color }}>
             {entry.name}:{" "}
-            {entry.name === "MoM %"
+            {entry.name === "MoM%"
               ? `${entry.value?.toFixed(1)}%`
               : fmt(entry.value, valueStyle ?? "number")}
           </p>
@@ -100,7 +100,7 @@ export default function GrowthChart({
             yAxisId="right"
             type="monotone"
             dataKey="mom"
-            name="MoM %"
+            name="MoM%"
             stroke="#f59e0b"
             strokeWidth={2}
             dot={{ r: 3, fill: "#f59e0b" }}

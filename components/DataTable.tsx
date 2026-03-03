@@ -49,6 +49,7 @@ export default function DataTable({ data }: Props) {
                 "Bets", "Wager", "GGR", "Fees",
                 "Edge", "Daily GGR", "Daily Fees",
                 "Ann. GGR", "Ann. Fees",
+                "Top Brands",
               ].map((h) => (
                 <th
                   key={h}
@@ -134,6 +135,11 @@ export default function DataTable({ data }: Props) {
                 {/* Annualized Fees */}
                 <td className="px-3 py-2 text-gray-300">
                   {fmt(row.annualized.fees, "currency")}
+                </td>
+
+                {/* Top Brands */}
+                <td className="px-3 py-2 text-gray-300 whitespace-nowrap">
+                  {row.topBrands?.join(", ") ?? "—"}
                 </td>
               </tr>
             ))}
