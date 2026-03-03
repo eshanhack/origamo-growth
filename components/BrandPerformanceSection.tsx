@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { MonthlyDataWithGrowth, BrandPerformance } from "@/lib/types";
 import { fmt } from "@/lib/format";
 
@@ -41,7 +41,15 @@ export default function BrandPerformanceSection({ data }: Props) {
     [data]
   );
 
-  const [selectedId, setSelectedId] = useState<string>(() => months[months.length - 1]?.id ?? "");
+  const [selectedId, setSelectedId] = useState<string>("");
+
+  // Sync to latest month once data arrives (and never override a user choice)
+  useEffect(() => {
+    if (months.length && !months.find((m) => m.id === selectedId)) {
+      setSelectedId(months[months.length - 1].id);
+    }
+  }, [months, selectedId]);
+
   const selected = months.find((d) => d.id === selectedId) ?? months[months.length - 1];
   const prevMonth = useMemo(() => {
     if (!selected) return undefined;
@@ -88,7 +96,7 @@ export default function BrandPerformanceSection({ data }: Props) {
         {/* Month dropdown */}
         <div className="relative">
           <select
-            value={selectedId}
+            value={selected?.id ?? ""}
             onChange={(e) => setSelectedId(e.target.value)}
             className="appearance-none bg-gray-800 border border-gray-700 text-white text-xs font-medium rounded-lg pl-3 pr-8 py-1.5 focus:outline-none focus:border-gray-500 cursor-pointer"
           >
