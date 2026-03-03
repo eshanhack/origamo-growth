@@ -2,11 +2,14 @@ import { MonthlyData, MonthlyDataWithGrowth } from "./types";
 import fs from "fs";
 import path from "path";
 
-const DATA_FILE = path.join(process.cwd(), "data", "metrics.json");
+// On Vercel (and other serverless platforms) process.cwd() is read-only.
+// We write mutations to /tmp which is always writable, and seed from the
+// bundled data/metrics.json that ships with the repo.
+const BUNDLED_FILE = path.join(process.cwd(), "data", "metrics.json");
+const TMP_FILE = "/tmp/origamo-metrics.json";
 
-// ─── Seed data (replace / extend with real values from your sheet) ───────────
-// Based on the metrics visible in your Grafana + Excel screenshots.
-// Columns: mau, activeBrands, betsPlaced, effectiveEdge, wager, ggr, fees
+// ─── Seed data ────────────────────────────────────────────────────────────────
+// Replace these placeholder values with your real numbers from the spreadsheet.
 const SEED_DATA: MonthlyData[] = [
   {
     id: "2024-05",
@@ -150,36 +153,42 @@ const SEED_DATA: MonthlyData[] = [
   },
 ];
 
-function ensureDataFile(): MonthlyData[] {
+function readJson(filePath: string): MonthlyData[] | null {
   try {
-    const dir = path.dirname(DATA_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    if (!fs.existsSync(DATA_FILE)) {
-      fs.writeFileSync(DATA_FILE, JSON.stringify(SEED_DATA, null, 2));
-      return SEED_DATA;
-    }
-    const raw = fs.readFileSync(DATA_FILE, "utf-8");
+    const raw = fs.readFileSync(filePath, "utf-8");
     return JSON.parse(raw) as MonthlyData[];
   } catch {
-    return SEED_DATA;
+    return null;
   }
 }
 
+function loadData(): MonthlyData[] {
+  // 1. Prefer /tmp (holds any in-session additions)
+  const tmp = readJson(TMP_FILE);
+  if (tmp) return tmp;
+
+  // 2. Fall back to the committed bundled file
+  const bundled = readJson(BUNDLED_FILE);
+  if (bundled) {
+    // Copy into /tmp so future writes work
+    try { fs.writeFileSync(TMP_FILE, JSON.stringify(bundled, null, 2)); } catch { /* ignore */ }
+    return bundled;
+  }
+
+  // 3. Last resort: in-memory seed
+  try { fs.writeFileSync(TMP_FILE, JSON.stringify(SEED_DATA, null, 2)); } catch { /* ignore */ }
+  return SEED_DATA;
+}
+
 export function getAllData(): MonthlyData[] {
-  const data = ensureDataFile();
-  return data.sort(
+  return loadData().sort(
     (a, b) => new Date(a.dateStart).getTime() - new Date(b.dateStart).getTime()
   );
 }
 
 export function saveData(data: MonthlyData[]): void {
-  const dir = path.dirname(DATA_FILE);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  // Always write to /tmp — works on Vercel and locally
+  fs.writeFileSync(TMP_FILE, JSON.stringify(data, null, 2));
 }
 
 export function upsertMonth(entry: MonthlyData): void {
@@ -194,8 +203,7 @@ export function upsertMonth(entry: MonthlyData): void {
 }
 
 function daysInPeriod(start: string, end: string): number {
-  const diff =
-    new Date(end).getTime() - new Date(start).getTime();
+  const diff = new Date(end).getTime() - new Date(start).getTime();
   return Math.max(1, Math.round(diff / (1000 * 60 * 60 * 24)) + 1);
 }
 
