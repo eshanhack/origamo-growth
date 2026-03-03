@@ -9,10 +9,19 @@ import DataTable from "@/components/DataTable";
 import AddDataModal from "@/components/AddDataModal";
 import GrafanaSync from "@/components/GrafanaSync";
 
+type FinancialView = "monthly" | "daily" | "annual";
+
+const VIEW_TABS: { key: FinancialView; label: string }[] = [
+  { key: "monthly", label: "Monthly"  },
+  { key: "daily",   label: "Daily"    },
+  { key: "annual",  label: "Annualised" },
+];
+
 export default function Dashboard() {
   const [data, setData] = useState<MonthlyDataWithGrowth[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [financialView, setFinancialView] = useState<FinancialView>("monthly");
 
   const load = useCallback(async () => {
     try {
@@ -33,6 +42,15 @@ export default function Dashboard() {
 
   const latest = data[data.length - 1];
   const prev = data[data.length - 2];
+
+  function financialVal(
+    row: MonthlyDataWithGrowth,
+    key: "wager" | "ggr" | "fees"
+  ): number {
+    if (financialView === "daily")   return row.daily[key];
+    if (financialView === "annual")  return row.annualized[key];
+    return row[key];
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-gray-100">
@@ -86,51 +104,73 @@ export default function Dashboard() {
         )}
 
         {/* ── KPI Cards ─────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-          {latest && (
-            <>
-              <MetricCard
-                label="Active Players"
-                value={fmt(latest.mau, "compact")}
-                growth={latest.growth.mau}
-                icon="👥"
-                sub={prev ? `was ${fmt(prev.mau, "compact")}` : undefined}
-              />
-              <MetricCard
-                label="Active Brands"
-                value={String(latest.activeBrands)}
-                growth={latest.growth.activeBrands}
-                icon="🏷️"
-              />
-              <MetricCard
-                label="Bets Placed"
-                value={fmt(latest.betsPlaced, "compact")}
-                growth={latest.growth.betsPlaced}
-                icon="🎲"
-              />
-              <MetricCard
-                label="Wager"
-                value={fmt(latest.wager, "currency")}
-                growth={latest.growth.wager}
-                icon="💰"
-                sub={`Daily: ${fmt(latest.daily.wager, "currency")}`}
-              />
-              <MetricCard
-                label="GGR"
-                value={fmt(latest.ggr, "currency")}
-                growth={latest.growth.ggr}
-                icon="📈"
-                sub={`Ann: ${fmt(latest.annualized.ggr, "currency")}`}
-              />
-              <MetricCard
-                label="Platform Fees"
-                value={fmt(latest.fees, "currency")}
-                growth={latest.growth.fees}
-                icon="⚙️"
-                sub={`Ann: ${fmt(latest.annualized.fees, "currency")}`}
-              />
-            </>
-          )}
+        <div className="space-y-3">
+          {/* Financial view toggle */}
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-gray-600 uppercase tracking-wider font-medium">
+              Wager · GGR · Fees
+            </span>
+            <div className="flex items-center bg-gray-900 border border-gray-800 rounded-lg p-0.5">
+              {VIEW_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setFinancialView(tab.key)}
+                  className={[
+                    "px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150",
+                    financialView === tab.key
+                      ? "bg-gray-700 text-white shadow-sm"
+                      : "text-gray-500 hover:text-gray-300",
+                  ].join(" ")}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            {latest && (
+              <>
+                <MetricCard
+                  label="Active Players"
+                  value={fmt(latest.mau, "compact")}
+                  growth={latest.growth.mau}
+                  icon="👥"
+                  sub={prev ? `was ${fmt(prev.mau, "compact")}` : undefined}
+                />
+                <MetricCard
+                  label="Active Brands"
+                  value={String(latest.activeBrands)}
+                  growth={latest.growth.activeBrands}
+                  icon="🏷️"
+                />
+                <MetricCard
+                  label="Bets Placed"
+                  value={fmt(latest.betsPlaced, "compact")}
+                  growth={latest.growth.betsPlaced}
+                  icon="🎲"
+                />
+                <MetricCard
+                  label="Wager"
+                  value={fmt(financialVal(latest, "wager"), "currency")}
+                  growth={latest.growth.wager}
+                  icon="💰"
+                />
+                <MetricCard
+                  label="GGR"
+                  value={fmt(financialVal(latest, "ggr"), "currency")}
+                  growth={latest.growth.ggr}
+                  icon="📈"
+                />
+                <MetricCard
+                  label="Platform Fees"
+                  value={fmt(financialVal(latest, "fees"), "currency")}
+                  growth={latest.growth.fees}
+                  icon="⚙️"
+                />
+              </>
+            )}
+          </div>
         </div>
 
         {/* ── Charts ────────────────────────────────────────────────────────── */}
