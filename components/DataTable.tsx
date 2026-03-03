@@ -45,7 +45,7 @@ export default function DataTable({ data }: Props) {
             <tr className="border-b border-gray-800">
               {[
                 "Period", "Source",
-                "MAU", "Brands",
+                "MAU",
                 "Bets", "Wager", "GGR", "Fees",
                 "Edge", "Daily GGR", "Daily Fees",
                 "Ann. GGR", "Ann. Fees",
@@ -80,12 +80,6 @@ export default function DataTable({ data }: Props) {
                 <td className="px-3 py-2">
                   <div className="text-white">{fmt(row.mau, "compact")}</div>
                   <GrowthBadge pct={row.growth.mau} />
-                </td>
-
-                {/* Brands */}
-                <td className="px-3 py-2">
-                  <div className="text-white">{row.activeBrands}</div>
-                  <GrowthBadge pct={row.growth.activeBrands} />
                 </td>
 
                 {/* Bets */}
