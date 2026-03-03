@@ -1,0 +1,21 @@
+# Next.js
+.next/
+out/
+node_modules/
+
+# Environment files (never commit secrets)
+.env.local
+.env*.local
+
+# Data store (optional — remove this line if you want to commit historical data)
+# data/metrics.json
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Build artifacts
+build/
+dist/
