@@ -11,7 +11,7 @@ import AddDataModal from "@/components/AddDataModal";
 import BrandPerformanceSection from "@/components/BrandPerformanceSection";
 import GrowthInsights from "@/components/GrowthInsights";
 import PasswordGate from "@/components/PasswordGate";
-import UpcomingBrands from "@/components/UpcomingBrands";
+import BrandsPortfolio from "@/components/BrandsPortfolio";
 
 type FinancialView = "monthly" | "daily" | "annual";
 type Tab = "overview" | "brands" | "insights" | "data" | "upcoming";
@@ -208,7 +208,7 @@ export default function Dashboard() {
             ["brands",    "Brand Performance"],
             ["insights",  "Growth Intelligence ✦"],
             ["data",      "All-time Data"],
-            ["upcoming",  "Upcoming Brands"],
+            ["upcoming",  "Brands Portfolio"],
           ] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
@@ -432,7 +432,7 @@ export default function Dashboard() {
         {activeTab === "insights" && <GrowthInsights data={data} />}
 
         {/* ── UPCOMING BRANDS TAB ─────────────────────────────────────── */}
-        {activeTab === "upcoming" && <UpcomingBrands />}
+        {activeTab === "upcoming" && <BrandsPortfolio />}
 
         {/* ── ALL-TIME DATA TAB ───────────────────────────────────────── */}
         {activeTab === "data" && (
