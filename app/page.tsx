@@ -3,11 +3,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import clsx from "clsx";
 import { MonthlyDataWithGrowth } from "@/lib/types";
-import { fmt, fmtGrowth, growthColor } from "@/lib/format";
+import { fmt } from "@/lib/format";
 import MetricCard from "@/components/MetricCard";
 import GrowthChart from "@/components/GrowthChart";
 import DataTable from "@/components/DataTable";
-import AddDataModal from "@/components/AddDataModal";
 import BrandPerformanceSection from "@/components/BrandPerformanceSection";
 import GrowthInsights from "@/components/GrowthInsights";
 import PasswordGate from "@/components/PasswordGate";
@@ -88,7 +87,6 @@ function aggregateToQuarters(months: MonthlyDataWithGrowth[]): MonthlyDataWithGr
 // ── Dashboard ─────────────────────────────────────────────────────
 export default function Dashboard() {
   const [data,             setData]             = useState<MonthlyDataWithGrowth[]>([]);
-  const [showAdd,          setShowAdd]          = useState(false);
   const [lastRefresh,      setLastRefresh]      = useState<Date | null>(null);
   const [financialView,    setFinancialView]    = useState<FinancialView>("monthly");
   const [selectedMonthId,  setSelectedMonthId]  = useState<string>("");
@@ -151,29 +149,6 @@ export default function Dashboard() {
       ? ((selected.effectiveEdge - selectedPrev.effectiveEdge) / selectedPrev.effectiveEdge) * 100
       : null;
 
-  // Per-player efficiency
-  const ggrPP   = selected ? selected.ggr        / selected.mau        : 0;
-  const wagerPP = selected ? selected.wager       / selected.mau        : 0;
-  const betsPP  = selected ? selected.betsPlaced  / selected.mau        : 0;
-  const avgBet  = selected && selected.betsPlaced > 0 ? selected.wager / selected.betsPlaced : 0;
-
-  const prevGgrPP   = selectedPrev ? selectedPrev.ggr        / selectedPrev.mau        : null;
-  const prevWagerPP = selectedPrev ? selectedPrev.wager       / selectedPrev.mau        : null;
-  const prevBetsPP  = selectedPrev ? selectedPrev.betsPlaced  / selectedPrev.mau        : null;
-  const prevAvgBet  = selectedPrev && selectedPrev.betsPlaced > 0 ? selectedPrev.wager / selectedPrev.betsPlaced : null;
-
-  function pctChg(prev: number | null, cur: number): number | null {
-    if (!prev) return null;
-    return ((cur - prev) / Math.abs(prev)) * 100;
-  }
-
-  const efficiencyMetrics = [
-    { label: "GGR / Player",   value: fmt(ggrPP,  "currency"), growth: pctChg(prevGgrPP,   ggrPP)  },
-    { label: "Wager / Player", value: fmt(wagerPP, "currency"), growth: pctChg(prevWagerPP, wagerPP) },
-    { label: "Bets / Player",  value: betsPP.toFixed(0),        growth: pctChg(prevBetsPP,  betsPP)  },
-    { label: "Avg Bet Size",   value: fmt(avgBet,  "currency"), growth: pctChg(prevAvgBet,  avgBet)  },
-  ];
-
   return (
     <PasswordGate>
     <div className="min-h-screen bg-[#0a0a0a] text-gray-100">
@@ -193,10 +168,6 @@ export default function Dashboard() {
             onClick={load}
             className="text-xs text-gray-500 hover:text-white px-3 py-1.5 border border-gray-800 hover:border-gray-600 rounded-lg transition-colors"
           >↻</button>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="text-xs bg-[#CCFF00] hover:bg-[#d4ff33] text-black px-4 py-1.5 rounded-lg font-semibold transition-colors"
-          >+ Add Month</button>
         </div>
       </header>
 
@@ -205,10 +176,10 @@ export default function Dashboard() {
         <div className="flex gap-0 max-w-7xl mx-auto">
           {([
             ["overview",  "Overview"],
-            ["brands",    "Brand Performance"],
+            ["upcoming",  "Brands"],
+            ["brands",    "Top 5 Brands Performance"],
             ["insights",  "Growth Intelligence ✦"],
             ["data",      "All-time Data"],
-            ["upcoming",  "Brands Portfolio"],
           ] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
@@ -387,30 +358,6 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* Efficiency ribbon */}
-              {selected && (
-                <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl flex items-stretch overflow-hidden">
-                  <div className="px-5 py-4 flex flex-col justify-center bg-gray-900/60 border-r border-gray-800/60 shrink-0">
-                    <div className="text-[9px] font-bold uppercase tracking-widest text-gray-600">Per Player</div>
-                    <div className="text-[9px] text-gray-700 mt-0.5">{selected.label}</div>
-                  </div>
-                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-800/60">
-                    {efficiencyMetrics.map(({ label, value, growth }) => (
-                      <div key={label} className="px-5 py-4">
-                        <div className="text-[10px] text-gray-600 mb-1">{label}</div>
-                        <div className={clsx("text-sm font-bold transition-all duration-200", showValues ? "text-white" : growthColor(growth))}>
-                          {showValues ? value : fmtGrowth(growth)}
-                        </div>
-                        {showValues && (
-                          <div className={clsx("text-[11px] font-semibold mt-0.5", growthColor(growth))}>
-                            {fmtGrowth(growth)}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* Charts — switch to quarterly data when in quarterly mode */}
@@ -449,7 +396,6 @@ export default function Dashboard() {
         )}
       </main>
 
-      {showAdd && <AddDataModal onSaved={load} onClose={() => setShowAdd(false)} />}
     </div>
     </PasswordGate>
   );
