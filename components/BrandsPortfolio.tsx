@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 
 // ── Types ────────────────────────────────────────────────────────────
 type BrandStatus = "live" | "soon";
-type BrandCategory = "crypto" | "sweeps" | "regulated" | "fiat" | "black";
+type BrandCategory = "crypto" | "sweeps" | "regulated" | "fiat" | "black" | "on-chain";
 
 interface Brand {
   name: string;
@@ -16,6 +16,8 @@ interface Brand {
   altDomains?: string[];
   /** Whether this brand uses Origamo bankroll */
   bankroll?: boolean;
+  /** Local logo path (overrides domain-based lookup) */
+  logoSrc?: string;
 }
 
 // ── Priority brands (hidden ordering — always float to top) ──────────
@@ -94,6 +96,9 @@ const BRANDS: Brand[] = [
   { name: "Ember", domain: "emberfund.io", url: "https://emberfund.io", category: "crypto", status: "soon" },
   { name: "Drizzle", domain: "drizzle.bet", url: "https://drizzle.bet", category: "crypto", status: "live" },
 
+  // ── On-chain ──
+  { name: "Scatter", domain: "ui.scatter-fe.pages.dev", url: "https://ui.scatter-fe.pages.dev", category: "on-chain", status: "soon", bankroll: true, logoSrc: "/scatter-logo.png" },
+
   // ── Regulated ──
   { name: "Sportingbet", domain: "sportingbet.com", url: "https://sportingbet.com", category: "regulated", status: "soon" },
   { name: "Entain", domain: "entaingroup.com", url: "https://entaingroup.com", category: "regulated", status: "soon", altDomains: ["entain.com"] },
@@ -115,6 +120,7 @@ const CATEGORY_META: Record<BrandCategory, { label: string; color: string; bg: s
   regulated: { label: "Regulated", color: "text-blue-300",    bg: "bg-blue-900",    border: "border-blue-700" },
   fiat:      { label: "Fiat",      color: "text-emerald-300", bg: "bg-emerald-900", border: "border-emerald-700" },
   black:     { label: "Black",     color: "text-gray-200",    bg: "bg-gray-700",    border: "border-gray-500" },
+  "on-chain": { label: "On-Chain", color: "text-cyan-300",    bg: "bg-cyan-900",    border: "border-cyan-700" },
 };
 
 const STATUS_META: Record<BrandStatus, { label: string; dot: string; text: string; bg: string; border: string }> = {
@@ -124,7 +130,7 @@ const STATUS_META: Record<BrandStatus, { label: string; dot: string; text: strin
 
 // ── BrandLogo ────────────────────────────────────────────────────────
 function BrandLogo({ brand }: { brand: Brand }) {
-  const srcs = buildSrcs(brand);
+  const srcs = brand.logoSrc ? [brand.logoSrc, ...buildSrcs(brand)] : buildSrcs(brand);
   const [idx, setIdx] = useState(0);
   const [exhausted, setExhausted] = useState(false);
 
@@ -182,6 +188,7 @@ export default function BrandsPortfolio() {
   const sweepsCount    = BRANDS.filter((b) => b.category === "sweeps").length;
   const regulatedCount = BRANDS.filter((b) => b.category === "regulated").length;
   const blackCount     = BRANDS.filter((b) => b.category === "black").length;
+  const onChainCount   = BRANDS.filter((b) => b.category === "on-chain").length;
   const bankrollCount  = BRANDS.filter((b) => b.bankroll).length;
 
   function toggleCategory(cat: BrandCategory) {
@@ -244,18 +251,19 @@ export default function BrandsPortfolio() {
     return result;
   }, [statusFilter, categoryFilters, bankrollFilter]);
 
-  const CATEGORIES: BrandCategory[] = ["crypto", "sweeps", "regulated", "fiat", "black"];
+  const CATEGORIES: BrandCategory[] = ["crypto", "sweeps", "regulated", "fiat", "black", "on-chain"];
 
   return (
     <div className="space-y-6 pb-6">
       {/* ── Header stat cards ──────────────────────────────────────── */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         <StatCard label="All Brands" count={allCount} active={headerFilter === "all"} onClick={() => handleHeaderClick("all")} />
         <StatCard label="Live" count={liveCount} active={headerFilter === "live"} onClick={() => handleHeaderClick("live")} />
         <StatCard label="Crypto" count={cryptoCount} active={headerFilter === "crypto"} onClick={() => handleHeaderClick("crypto")} />
         <StatCard label="Sweeps" count={sweepsCount} active={headerFilter === "sweeps"} onClick={() => handleHeaderClick("sweeps")} />
         <StatCard label="Regulated" count={regulatedCount} active={headerFilter === "regulated"} onClick={() => handleHeaderClick("regulated")} />
         <StatCard label="Black" count={blackCount} active={headerFilter === "black"} onClick={() => handleHeaderClick("black")} />
+        <StatCard label="On-Chain" count={onChainCount} active={headerFilter === "on-chain"} onClick={() => handleHeaderClick("on-chain")} />
       </div>
 
       {/* ── Content area: sidebar + grid ───────────────────────────── */}
