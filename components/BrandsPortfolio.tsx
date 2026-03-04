@@ -48,7 +48,7 @@ const BRANDS: Brand[] = [
   { name: "Lilibet", domain: "lilibet.com", url: "https://lilibet.com", category: "fiat", status: "live" },
   { name: "Parimatch", domain: "parimatch.com", url: "https://parimatch.com", category: "fiat", status: "soon" },
   { name: "NairaBet", domain: "nairabet.com", url: "https://nairabet.com", category: "fiat", status: "soon" },
-  { name: "Spinnaus", domain: "spinnaus.com", url: "https://spinnaus.com", category: "fiat", status: "soon" },
+  { name: "Spinnaus", domain: "spinnaus.com", url: "https://spinnaus.com", category: "fiat", status: "live" },
 
   // ── Sweeps ──
   { name: "Kirgo.us", domain: "kirgo.us", url: "https://kirgo.us", category: "sweeps", status: "soon" },

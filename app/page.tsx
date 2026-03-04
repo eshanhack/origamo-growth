@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import clsx from "clsx";
 import { MonthlyDataWithGrowth } from "@/lib/types";
 import { fmt } from "@/lib/format";
@@ -14,6 +15,22 @@ import BrandsPortfolio from "@/components/BrandsPortfolio";
 
 type FinancialView = "monthly" | "daily" | "annual";
 type Tab = "overview" | "brands" | "insights" | "data" | "upcoming";
+
+const TAB_SLUGS: Record<string, Tab> = {
+  overview: "overview",
+  brands: "upcoming",
+  performance: "brands",
+  intelligence: "insights",
+  data: "data",
+};
+
+const TAB_TO_SLUG: Record<Tab, string> = {
+  overview: "overview",
+  upcoming: "brands",
+  brands: "performance",
+  insights: "intelligence",
+  data: "data",
+};
 
 // ── Quarterly aggregation ─────────────────────────────────────────
 function aggregateToQuarters(months: MonthlyDataWithGrowth[]): MonthlyDataWithGrowth[] {
@@ -85,12 +102,27 @@ function aggregateToQuarters(months: MonthlyDataWithGrowth[]): MonthlyDataWithGr
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────
-export default function Dashboard() {
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <Dashboard />
+    </Suspense>
+  );
+}
+
+function Dashboard() {
   const [data,             setData]             = useState<MonthlyDataWithGrowth[]>([]);
   const [lastRefresh,      setLastRefresh]      = useState<Date | null>(null);
   const [financialView,    setFinancialView]    = useState<FinancialView>("monthly");
   const [selectedMonthId,  setSelectedMonthId]  = useState<string>("");
-  const [activeTab,        setActiveTab]        = useState<Tab>("overview");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const activeTab: Tab = TAB_SLUGS[searchParams.get("tab") ?? ""] ?? "overview";
+  const setActiveTab = useCallback((tab: Tab) => {
+    const slug = TAB_TO_SLUG[tab];
+    router.push(slug === "overview" ? "/" : `/?tab=${slug}`, { scroll: false });
+  }, [router]);
   const [showValues,       setShowValues]       = useState(true);
   const [quarterlyMode,    setQuarterlyMode]    = useState(false);
   const [selectedQtrId,    setSelectedQtrId]    = useState<string>("");
