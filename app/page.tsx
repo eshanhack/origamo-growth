@@ -11,9 +11,10 @@ import AddDataModal from "@/components/AddDataModal";
 import BrandPerformanceSection from "@/components/BrandPerformanceSection";
 import GrowthInsights from "@/components/GrowthInsights";
 import PasswordGate from "@/components/PasswordGate";
+import UpcomingBrands from "@/components/UpcomingBrands";
 
 type FinancialView = "monthly" | "daily" | "annual";
-type Tab = "overview" | "brands" | "insights" | "data";
+type Tab = "overview" | "brands" | "insights" | "data" | "upcoming";
 
 // ── Quarterly aggregation ─────────────────────────────────────────
 function aggregateToQuarters(months: MonthlyDataWithGrowth[]): MonthlyDataWithGrowth[] {
@@ -203,10 +204,11 @@ export default function Dashboard() {
       <div className="border-b border-gray-800 px-6">
         <div className="flex gap-0 max-w-7xl mx-auto">
           {([
-            ["overview", "Overview"],
-            ["brands",   "Brand Performance"],
-            ["insights", "Growth Intelligence ✦"],
-            ["data",     "All-time Data"],
+            ["overview",  "Overview"],
+            ["brands",    "Brand Performance"],
+            ["insights",  "Growth Intelligence ✦"],
+            ["data",      "All-time Data"],
+            ["upcoming",  "Upcoming Brands"],
           ] as [Tab, string][]).map(([tab, label]) => (
             <button
               key={tab}
@@ -428,6 +430,9 @@ export default function Dashboard() {
 
         {/* ── GROWTH INTELLIGENCE TAB ─────────────────────────────────── */}
         {activeTab === "insights" && <GrowthInsights data={data} />}
+
+        {/* ── UPCOMING BRANDS TAB ─────────────────────────────────────── */}
+        {activeTab === "upcoming" && <UpcomingBrands />}
 
         {/* ── ALL-TIME DATA TAB ───────────────────────────────────────── */}
         {activeTab === "data" && (
