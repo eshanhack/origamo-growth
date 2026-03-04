@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Origami Growth - Dashboard",
   description: "Real-time startup growth dashboard",
-  icons: { icon: "/favicon.png" },
+  icons: { icon: "/favicon.ico" },
 };
 
 export default function RootLayout({
