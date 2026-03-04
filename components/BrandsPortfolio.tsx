@@ -14,6 +14,8 @@ interface Brand {
   status: BrandStatus;
   /** Extra domains to try for logo if primary fails */
   altDomains?: string[];
+  /** Whether this brand uses Origamo bankroll */
+  bankroll?: boolean;
 }
 
 // ── Priority brands (hidden ordering — always float to top) ──────────
@@ -45,10 +47,10 @@ const BRANDS: Brand[] = [
   { name: "TurboStakes", domain: "turbostakes.com", url: "https://turbostakes.com", category: "sweeps", status: "live" },
 
   // ── Crypto ──
-  { name: "CSGO500", domain: "csgo500.com", url: "https://csgo500.com", category: "crypto", status: "live" },
+  { name: "CSGO500", domain: "csgo500.com", url: "https://csgo500.com", category: "crypto", status: "live", bankroll: true },
   { name: "Metaspins", domain: "metaspins.com", url: "https://metaspins.com", category: "crypto", status: "live" },
   { name: "DegenCity", domain: "degencity.com", url: "https://degencity.com", category: "crypto", status: "live" },
-  { name: "Kirgo", domain: "kirgo.com", url: "https://kirgo.com", category: "crypto", status: "live" },
+  { name: "Kirgo", domain: "kirgo.com", url: "https://kirgo.com", category: "crypto", status: "live", bankroll: true },
   { name: "Vave", domain: "vave.com", url: "https://vave.com", category: "crypto", status: "live" },
   { name: "Tigrabit", domain: "tigrabit.com", url: "https://tigrabit.com", category: "crypto", status: "live" },
   { name: "Cloudbet", domain: "cloudbet.com", url: "https://cloudbet.com", category: "crypto", status: "live" },
@@ -59,8 +61,8 @@ const BRANDS: Brand[] = [
   { name: "CasinoMega", domain: "casinomega.com", url: "https://casinomega.com", category: "crypto", status: "live" },
   { name: "RollHub", domain: "rollhub.com", url: "https://rollhub.com", category: "crypto", status: "live" },
   { name: "Biggg", domain: "biggg.com", url: "https://biggg.com", category: "crypto", status: "live" },
-  { name: "Winna", domain: "winna.com", url: "https://winna.com", category: "crypto", status: "soon" },
-  { name: "Bluff", domain: "bluff.com", url: "https://bluff.com", category: "crypto", status: "soon" },
+  { name: "Winna", domain: "winna.com", url: "https://winna.com", category: "crypto", status: "soon", bankroll: true },
+  { name: "Bluff", domain: "bluff.com", url: "https://bluff.com", category: "crypto", status: "soon", bankroll: true },
   { name: "Spinnaus", domain: "spinnaus.com", url: "https://spinnaus.com", category: "crypto", status: "soon" },
   { name: "Bitcasino", domain: "bitcasino.io", url: "https://bitcasino.io", category: "crypto", status: "live" },
   { name: "BetBaba", domain: "betbaba.com", url: "https://betbaba.com", category: "crypto", status: "live" },
@@ -171,6 +173,7 @@ function StatCard({ label, count, active, onClick }: { label: string; count: num
 export default function BrandsPortfolio() {
   const [statusFilter, setStatusFilter] = useState<BrandStatus | "all">("all");
   const [categoryFilters, setCategoryFilters] = useState<Set<BrandCategory>>(new Set());
+  const [bankrollFilter, setBankrollFilter] = useState(false);
   const [headerFilter, setHeaderFilter] = useState<string | null>(null);
 
   // Counts
@@ -180,6 +183,7 @@ export default function BrandsPortfolio() {
   const sweepsCount    = BRANDS.filter((b) => b.category === "sweeps").length;
   const regulatedCount = BRANDS.filter((b) => b.category === "regulated").length;
   const blackCount     = BRANDS.filter((b) => b.category === "black").length;
+  const bankrollCount  = BRANDS.filter((b) => b.bankroll).length;
 
   function toggleCategory(cat: BrandCategory) {
     setCategoryFilters((prev) => {
@@ -226,6 +230,11 @@ export default function BrandsPortfolio() {
       result = result.filter((b) => categoryFilters.has(b.category));
     }
 
+    // Bankroll filter
+    if (bankrollFilter) {
+      result = result.filter((b) => b.bankroll);
+    }
+
     // Priority brands float to top, rest keep original order
     result.sort((a, b) => {
       const aPri = PRIORITY_DOMAINS.has(a.domain) ? 0 : 1;
@@ -234,7 +243,7 @@ export default function BrandsPortfolio() {
     });
 
     return result;
-  }, [statusFilter, categoryFilters]);
+  }, [statusFilter, categoryFilters, bankrollFilter]);
 
   const CATEGORIES: BrandCategory[] = ["crypto", "sweeps", "regulated", "fiat", "black"];
 
@@ -313,6 +322,23 @@ export default function BrandsPortfolio() {
               })}
             </div>
           </div>
+
+          {/* Bankroll filter */}
+          <div>
+            <h4 className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-600 mb-2.5">Bankroll</h4>
+            <button
+              onClick={() => { setBankrollFilter((v) => !v); setHeaderFilter(null); }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150
+                ${bankrollFilter
+                  ? "bg-[#CCFF00]/10 text-[#CCFF00] border border-[#CCFF00]/20"
+                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/60 border border-transparent"
+                }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${bankrollFilter ? "bg-[#CCFF00]" : "bg-gray-600"}`} />
+              Bankroll
+              <span className="ml-auto text-[10px] text-gray-600">{bankrollCount}</span>
+            </button>
+          </div>
         </div>
 
         {/* ── Brand cards grid ─────────────────────────────────────── */}
@@ -349,13 +375,23 @@ export default function BrandsPortfolio() {
                 </button>
               );
             })}
+            <button
+              onClick={() => setBankrollFilter((v) => !v)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all
+                ${bankrollFilter
+                  ? "border-[#CCFF00]/30 text-[#CCFF00] bg-[#CCFF00]/10"
+                  : "border-gray-700 text-gray-400"
+                }`}
+            >
+              Bankroll
+            </button>
           </div>
 
           {/* Results count */}
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-gray-500">
               {filtered.length} brand{filtered.length !== 1 ? "s" : ""}
-              {statusFilter !== "all" || categoryFilters.size > 0 ? " (filtered)" : ""}
+              {statusFilter !== "all" || categoryFilters.size > 0 || bankrollFilter ? " (filtered)" : ""}
             </p>
           </div>
 
@@ -406,6 +442,12 @@ export default function BrandsPortfolio() {
                         ${catMeta.bg} ${catMeta.color} ${catMeta.border} border`}>
                         {catMeta.label}
                       </span>
+                      {brand.bankroll && (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider
+                          bg-[#CCFF00]/20 text-[#CCFF00] border border-[#CCFF00]/30">
+                          Bankroll
+                        </span>
+                      )}
                     </div>
                   </div>
                 </a>
