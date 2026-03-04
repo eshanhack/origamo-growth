@@ -91,6 +91,8 @@ const BRANDS: Brand[] = [
   { name: "Gambana", domain: "gambana.com", url: "https://gambana.com", category: "crypto", status: "live" },
   { name: "DailySpins", domain: "dailyspins.com", url: "https://dailyspins.com", category: "crypto", status: "soon" },
   { name: "Bombastic", domain: "bombastic.com", url: "https://bombastic.com", category: "crypto", status: "soon" },
+  { name: "Ember", domain: "emberfund.io", url: "https://emberfund.io", category: "crypto", status: "soon" },
+  { name: "Drizzle", domain: "drizzle.bet", url: "https://drizzle.bet", category: "crypto", status: "live" },
 
   // ── Regulated ──
   { name: "Sportingbet", domain: "sportingbet.com", url: "https://sportingbet.com", category: "regulated", status: "soon" },
