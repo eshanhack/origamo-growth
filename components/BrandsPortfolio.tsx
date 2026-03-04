@@ -12,85 +12,91 @@ interface Brand {
   url: string;
   category: BrandCategory;
   status: BrandStatus;
-  /** AI-estimated revenue rank (1 = highest revenue) */
-  revenueRank: number;
   /** Extra domains to try for logo if primary fails */
   altDomains?: string[];
 }
 
+// ── Priority brands (hidden ordering — always float to top) ──────────
+const PRIORITY_DOMAINS = new Set([
+  "csgo500.com", "metaspins.com", "cloudbet.com", "kirgo.com",
+  "degencity.com", "vave.com", "chanced.com", "bodog.eu",
+  "bovada.lv", "sportingbet.com", "entaingroup.com", "winna.com",
+  "parimatch.com", "bluff.com",
+]);
+
 // ── Brand data ───────────────────────────────────────────────────────
 const BRANDS: Brand[] = [
   // ── Black ──
-  { name: "Bovada", domain: "bovada.lv", url: "https://bovada.lv", category: "black", status: "soon", revenueRank: 1 },
-  { name: "Bodog", domain: "bodog.eu", url: "https://bodog.eu", category: "black", status: "soon", revenueRank: 2, altDomains: ["bodog.com"] },
+  { name: "Bovada", domain: "bovada.lv", url: "https://bovada.lv", category: "black", status: "soon" },
+  { name: "Bodog", domain: "bodog.eu", url: "https://bodog.eu", category: "black", status: "soon", altDomains: ["bodog.com"] },
 
   // ── Fiat ──
-  { name: "Spinbet", domain: "spinbet.com", url: "https://spinbet.com", category: "fiat", status: "live", revenueRank: 28 },
-  { name: "Spinbit", domain: "spinbit.com", url: "https://spinbit.com", category: "fiat", status: "live", revenueRank: 29 },
-  { name: "Lilibet", domain: "lilibet.com", url: "https://lilibet.com", category: "fiat", status: "live", revenueRank: 27 },
-  { name: "Parimatch", domain: "parimatch.com", url: "https://parimatch.com", category: "fiat", status: "soon", revenueRank: 8 },
+  { name: "Spinbet", domain: "spinbet.com", url: "https://spinbet.com", category: "fiat", status: "live" },
+  { name: "Spinbit", domain: "spinbit.com", url: "https://spinbit.com", category: "fiat", status: "live" },
+  { name: "Lilibet", domain: "lilibet.com", url: "https://lilibet.com", category: "fiat", status: "live" },
+  { name: "Parimatch", domain: "parimatch.com", url: "https://parimatch.com", category: "fiat", status: "soon" },
 
   // ── Sweeps ──
-  { name: "Kirgo.us", domain: "kirgo.us", url: "https://kirgo.us", category: "sweeps", status: "soon", revenueRank: 37 },
-  { name: "Chanced", domain: "chanced.com", url: "https://chanced.com", category: "sweeps", status: "live", revenueRank: 21 },
-  { name: "Punt", domain: "punt.com", url: "https://punt.com", category: "sweeps", status: "live", revenueRank: 20 },
-  { name: "Ember", domain: "ember.com", url: "https://ember.com", category: "sweeps", status: "soon", revenueRank: 52, altDomains: ["ember.casino"] },
-  { name: "Gold Rush City", domain: "goldrushcity.com", url: "https://goldrushcity.com", category: "sweeps", status: "live", revenueRank: 33 },
-  { name: "TurboStakes", domain: "turbostakes.com", url: "https://turbostakes.com", category: "sweeps", status: "live", revenueRank: 49 },
+  { name: "Kirgo.us", domain: "kirgo.us", url: "https://kirgo.us", category: "sweeps", status: "soon" },
+  { name: "Chanced", domain: "chanced.com", url: "https://chanced.com", category: "sweeps", status: "live" },
+  { name: "Punt", domain: "punt.com", url: "https://punt.com", category: "sweeps", status: "live" },
+  { name: "Ember", domain: "ember.com", url: "https://ember.com", category: "sweeps", status: "soon", altDomains: ["ember.casino"] },
+  { name: "Gold Rush City", domain: "goldrushcity.com", url: "https://goldrushcity.com", category: "sweeps", status: "live" },
+  { name: "TurboStakes", domain: "turbostakes.com", url: "https://turbostakes.com", category: "sweeps", status: "live" },
 
   // ── Crypto ──
-  { name: "CSGO500", domain: "csgo500.com", url: "https://csgo500.com", category: "crypto", status: "live", revenueRank: 13 },
-  { name: "Metaspins", domain: "metaspins.com", url: "https://metaspins.com", category: "crypto", status: "live", revenueRank: 25 },
-  { name: "DegenCity", domain: "degencity.com", url: "https://degencity.com", category: "crypto", status: "live", revenueRank: 47 },
-  { name: "Kirgo", domain: "kirgo.com", url: "https://kirgo.com", category: "crypto", status: "live", revenueRank: 24 },
-  { name: "Vave", domain: "vave.com", url: "https://vave.com", category: "crypto", status: "live", revenueRank: 14 },
-  { name: "Tigrabit", domain: "tigrabit.com", url: "https://tigrabit.com", category: "crypto", status: "live", revenueRank: 48 },
-  { name: "Cloudbet", domain: "cloudbet.com", url: "https://cloudbet.com", category: "crypto", status: "live", revenueRank: 5 },
-  { name: "Menace", domain: "menace.com", url: "https://menace.com", category: "crypto", status: "live", revenueRank: 45, altDomains: ["menace.casino"] },
-  { name: "Respin", domain: "respin.com", url: "https://respin.com", category: "crypto", status: "live", revenueRank: 44 },
-  { name: "EpicBet", domain: "epicbet.com", url: "https://epicbet.com", category: "crypto", status: "live", revenueRank: 39 },
-  { name: "Sportsbet.io", domain: "sportsbet.io", url: "https://sportsbet.io", category: "crypto", status: "live", revenueRank: 3 },
-  { name: "CasinoMega", domain: "casinomega.com", url: "https://casinomega.com", category: "crypto", status: "live", revenueRank: 35 },
-  { name: "RollHub", domain: "rollhub.com", url: "https://rollhub.com", category: "crypto", status: "live", revenueRank: 40 },
-  { name: "Biggg", domain: "biggg.com", url: "https://biggg.com", category: "crypto", status: "live", revenueRank: 41 },
-  { name: "Winna", domain: "winna.com", url: "https://winna.com", category: "crypto", status: "soon", revenueRank: 56 },
-  { name: "Bluff", domain: "bluff.com", url: "https://bluff.com", category: "crypto", status: "soon", revenueRank: 54 },
-  { name: "Spinnaus", domain: "spinnaus.com", url: "https://spinnaus.com", category: "crypto", status: "soon", revenueRank: 55 },
-  { name: "Bitcasino", domain: "bitcasino.io", url: "https://bitcasino.io", category: "crypto", status: "live", revenueRank: 9 },
-  { name: "BetBaba", domain: "betbaba.com", url: "https://betbaba.com", category: "crypto", status: "live", revenueRank: 22 },
-  { name: "Akcebet", domain: "akcebet.com", url: "https://akcebet.com", category: "crypto", status: "live", revenueRank: 32 },
-  { name: "Gamblr", domain: "gamblr.com", url: "https://gamblr.com", category: "crypto", status: "live", revenueRank: 42 },
-  { name: "Kiekka", domain: "kiekka.com", url: "https://kiekka.com", category: "crypto", status: "live", revenueRank: 43 },
-  { name: "Betivo", domain: "betivo.com", url: "https://betivo.com", category: "crypto", status: "live", revenueRank: 31 },
-  { name: "Drizzle", domain: "drizzle.com", url: "https://drizzle.com", category: "crypto", status: "live", revenueRank: 38, altDomains: ["drizzle.casino"] },
-  { name: "BetBolt", domain: "betbolt.com", url: "https://betbolt.com", category: "crypto", status: "live", revenueRank: 36 },
-  { name: "PEC Bet", domain: "pec.bet", url: "https://pec.bet", category: "crypto", status: "live", revenueRank: 62 },
-  { name: "Kings.game", domain: "kings.game", url: "https://kings.game", category: "crypto", status: "live", revenueRank: 12, altDomains: ["kingscasino.io"] },
-  { name: "EfesCasino", domain: "efescasino.com", url: "https://efescasino.com", category: "crypto", status: "live", revenueRank: 34 },
-  { name: "Rivalry", domain: "rivalry.com", url: "https://rivalry.com", category: "crypto", status: "live", revenueRank: 7 },
-  { name: "PickleBet", domain: "picklebet.com", url: "https://picklebet.com", category: "crypto", status: "live", revenueRank: 30 },
-  { name: "Sultanbet", domain: "sultanbet.com", url: "https://sultanbet.com", category: "crypto", status: "live", revenueRank: 10 },
-  { name: "Spiidi", domain: "spiidi.com", url: "https://spiidi.com", category: "crypto", status: "live", revenueRank: 50 },
-  { name: "SolPengu", domain: "solpengu.com", url: "https://solpengu.com", category: "crypto", status: "live", revenueRank: 51 },
-  { name: "Shokker", domain: "shokker.com", url: "https://shokker.com", category: "crypto", status: "live", revenueRank: 46 },
-  { name: "Minebit", domain: "minebit.com", url: "https://minebit.com", category: "crypto", status: "soon", revenueRank: 53 },
-  { name: "Gambana", domain: "gambana.com", url: "https://gambana.com", category: "crypto", status: "live", revenueRank: 61 },
-  { name: "Hondubet", domain: "hondubet.com", url: "https://hondubet.com", category: "crypto", status: "soon", revenueRank: 58 },
-  { name: "Sivarbet", domain: "sivarbet.com", url: "https://sivarbet.com", category: "crypto", status: "soon", revenueRank: 59 },
-  { name: "DailySpins", domain: "dailyspins.com", url: "https://dailyspins.com", category: "crypto", status: "soon", revenueRank: 57 },
-  { name: "Bombastic", domain: "bombastic.com", url: "https://bombastic.com", category: "crypto", status: "soon", revenueRank: 26 },
-  { name: "NairaBet", domain: "nairabet.com", url: "https://nairabet.com", category: "crypto", status: "soon", revenueRank: 23 },
-  { name: "Bahis", domain: "bahis.com", url: "https://bahis.com", category: "crypto", status: "soon", revenueRank: 17 },
-  { name: "Matadorbet", domain: "matadorbet.com", url: "https://matadorbet.com", category: "crypto", status: "soon", revenueRank: 18 },
-  { name: "Fixbet", domain: "fixbet.com", url: "https://fixbet.com", category: "crypto", status: "soon", revenueRank: 19 },
-  { name: "Sahabet", domain: "sahabet.com", url: "https://sahabet.com", category: "crypto", status: "soon", revenueRank: 16 },
-  { name: "Onwin", domain: "onwin.com", url: "https://onwin.com", category: "crypto", status: "soon", revenueRank: 15 },
-  { name: "BetTurkey", domain: "betturkey.com", url: "https://betturkey.com", category: "crypto", status: "soon", revenueRank: 11 },
-  { name: "Zbahis", domain: "zbahis.com", url: "https://zbahis.com", category: "crypto", status: "soon", revenueRank: 60 },
+  { name: "CSGO500", domain: "csgo500.com", url: "https://csgo500.com", category: "crypto", status: "live" },
+  { name: "Metaspins", domain: "metaspins.com", url: "https://metaspins.com", category: "crypto", status: "live" },
+  { name: "DegenCity", domain: "degencity.com", url: "https://degencity.com", category: "crypto", status: "live" },
+  { name: "Kirgo", domain: "kirgo.com", url: "https://kirgo.com", category: "crypto", status: "live" },
+  { name: "Vave", domain: "vave.com", url: "https://vave.com", category: "crypto", status: "live" },
+  { name: "Tigrabit", domain: "tigrabit.com", url: "https://tigrabit.com", category: "crypto", status: "live" },
+  { name: "Cloudbet", domain: "cloudbet.com", url: "https://cloudbet.com", category: "crypto", status: "live" },
+  { name: "Menace", domain: "menace.com", url: "https://menace.com", category: "crypto", status: "live", altDomains: ["menace.casino"] },
+  { name: "Respin", domain: "respin.com", url: "https://respin.com", category: "crypto", status: "live" },
+  { name: "EpicBet", domain: "epicbet.com", url: "https://epicbet.com", category: "crypto", status: "live" },
+  { name: "Sportsbet.io", domain: "sportsbet.io", url: "https://sportsbet.io", category: "crypto", status: "live" },
+  { name: "CasinoMega", domain: "casinomega.com", url: "https://casinomega.com", category: "crypto", status: "live" },
+  { name: "RollHub", domain: "rollhub.com", url: "https://rollhub.com", category: "crypto", status: "live" },
+  { name: "Biggg", domain: "biggg.com", url: "https://biggg.com", category: "crypto", status: "live" },
+  { name: "Winna", domain: "winna.com", url: "https://winna.com", category: "crypto", status: "soon" },
+  { name: "Bluff", domain: "bluff.com", url: "https://bluff.com", category: "crypto", status: "soon" },
+  { name: "Spinnaus", domain: "spinnaus.com", url: "https://spinnaus.com", category: "crypto", status: "soon" },
+  { name: "Bitcasino", domain: "bitcasino.io", url: "https://bitcasino.io", category: "crypto", status: "live" },
+  { name: "BetBaba", domain: "betbaba.com", url: "https://betbaba.com", category: "crypto", status: "live" },
+  { name: "Akcebet", domain: "akcebet.com", url: "https://akcebet.com", category: "crypto", status: "live" },
+  { name: "Gamblr", domain: "gamblr.com", url: "https://gamblr.com", category: "crypto", status: "live" },
+  { name: "Kiekka", domain: "kiekka.com", url: "https://kiekka.com", category: "crypto", status: "live" },
+  { name: "Betivo", domain: "betivo.com", url: "https://betivo.com", category: "crypto", status: "live" },
+  { name: "Drizzle", domain: "drizzle.com", url: "https://drizzle.com", category: "crypto", status: "live", altDomains: ["drizzle.casino"] },
+  { name: "BetBolt", domain: "betbolt.com", url: "https://betbolt.com", category: "crypto", status: "live" },
+  { name: "PEC Bet", domain: "pec.bet", url: "https://pec.bet", category: "crypto", status: "live" },
+  { name: "Kings.game", domain: "kings.game", url: "https://kings.game", category: "crypto", status: "live", altDomains: ["kingscasino.io"] },
+  { name: "EfesCasino", domain: "efescasino.com", url: "https://efescasino.com", category: "crypto", status: "live" },
+  { name: "Rivalry", domain: "rivalry.com", url: "https://rivalry.com", category: "crypto", status: "live" },
+  { name: "PickleBet", domain: "picklebet.com", url: "https://picklebet.com", category: "crypto", status: "live" },
+  { name: "Sultanbet", domain: "sultanbet.com", url: "https://sultanbet.com", category: "crypto", status: "live" },
+  { name: "Spiidi", domain: "spiidi.com", url: "https://spiidi.com", category: "crypto", status: "live" },
+  { name: "SolPengu", domain: "solpengu.com", url: "https://solpengu.com", category: "crypto", status: "live" },
+  { name: "Shokker", domain: "shokker.com", url: "https://shokker.com", category: "crypto", status: "live" },
+  { name: "Minebit", domain: "minebit.com", url: "https://minebit.com", category: "crypto", status: "soon" },
+  { name: "Gambana", domain: "gambana.com", url: "https://gambana.com", category: "crypto", status: "live" },
+  { name: "Hondubet", domain: "hondubet.com", url: "https://hondubet.com", category: "crypto", status: "soon" },
+  { name: "Sivarbet", domain: "sivarbet.com", url: "https://sivarbet.com", category: "crypto", status: "soon" },
+  { name: "DailySpins", domain: "dailyspins.com", url: "https://dailyspins.com", category: "crypto", status: "soon" },
+  { name: "Bombastic", domain: "bombastic.com", url: "https://bombastic.com", category: "crypto", status: "soon" },
+  { name: "NairaBet", domain: "nairabet.com", url: "https://nairabet.com", category: "crypto", status: "soon" },
+  { name: "Bahis", domain: "bahis.com", url: "https://bahis.com", category: "crypto", status: "soon" },
+  { name: "Matadorbet", domain: "matadorbet.com", url: "https://matadorbet.com", category: "crypto", status: "soon" },
+  { name: "Fixbet", domain: "fixbet.com", url: "https://fixbet.com", category: "crypto", status: "soon" },
+  { name: "Sahabet", domain: "sahabet.com", url: "https://sahabet.com", category: "crypto", status: "soon" },
+  { name: "Onwin", domain: "onwin.com", url: "https://onwin.com", category: "crypto", status: "soon" },
+  { name: "BetTurkey", domain: "betturkey.com", url: "https://betturkey.com", category: "crypto", status: "soon" },
+  { name: "Zbahis", domain: "zbahis.com", url: "https://zbahis.com", category: "crypto", status: "soon" },
 
   // ── Regulated ──
-  { name: "Sportingbet", domain: "sportingbet.com", url: "https://sportingbet.com", category: "regulated", status: "soon", revenueRank: 6 },
-  { name: "Entain", domain: "entaingroup.com", url: "https://entaingroup.com", category: "regulated", status: "soon", revenueRank: 4, altDomains: ["entain.com"] },
+  { name: "Sportingbet", domain: "sportingbet.com", url: "https://sportingbet.com", category: "regulated", status: "soon" },
+  { name: "Entain", domain: "entaingroup.com", url: "https://entaingroup.com", category: "regulated", status: "soon", altDomains: ["entain.com"] },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -103,16 +109,16 @@ function buildSrcs(brand: Brand): string[] {
 }
 
 const CATEGORY_META: Record<BrandCategory, { label: string; color: string; bg: string; border: string }> = {
-  crypto:    { label: "Crypto",    color: "text-orange-400",  bg: "bg-orange-950/30",  border: "border-orange-800/40" },
-  sweeps:    { label: "Sweeps",    color: "text-purple-400",  bg: "bg-purple-950/30",  border: "border-purple-800/40" },
-  regulated: { label: "Regulated", color: "text-blue-400",    bg: "bg-blue-950/30",    border: "border-blue-800/40" },
-  fiat:      { label: "Fiat",      color: "text-emerald-400", bg: "bg-emerald-950/30", border: "border-emerald-800/40" },
-  black:     { label: "Black",     color: "text-gray-300",    bg: "bg-gray-800/40",    border: "border-gray-600/40" },
+  crypto:    { label: "Crypto",    color: "text-orange-300",  bg: "bg-orange-900",  border: "border-orange-700" },
+  sweeps:    { label: "Sweeps",    color: "text-purple-300",  bg: "bg-purple-900",  border: "border-purple-700" },
+  regulated: { label: "Regulated", color: "text-blue-300",    bg: "bg-blue-900",    border: "border-blue-700" },
+  fiat:      { label: "Fiat",      color: "text-emerald-300", bg: "bg-emerald-900", border: "border-emerald-700" },
+  black:     { label: "Black",     color: "text-gray-200",    bg: "bg-gray-700",    border: "border-gray-500" },
 };
 
 const STATUS_META: Record<BrandStatus, { label: string; dot: string; text: string; bg: string; border: string }> = {
-  live: { label: "Live", dot: "bg-green-400", text: "text-green-400", bg: "bg-green-950/30", border: "border-green-800/40" },
-  soon: { label: "Soon", dot: "bg-yellow-400", text: "text-yellow-400", bg: "bg-yellow-950/30", border: "border-yellow-800/40" },
+  live: { label: "Live", dot: "bg-green-400", text: "text-green-300", bg: "bg-green-900", border: "border-green-700" },
+  soon: { label: "Soon", dot: "bg-yellow-400", text: "text-yellow-300", bg: "bg-yellow-900", border: "border-yellow-700" },
 };
 
 // ── BrandLogo ────────────────────────────────────────────────────────
@@ -124,7 +130,7 @@ function BrandLogo({ brand }: { brand: Brand }) {
   if (exhausted) {
     return (
       <div className="flex items-center justify-center w-full h-full">
-        <span className="text-4xl font-black text-gray-300 select-none">{brand.name.charAt(0)}</span>
+        <span className="text-4xl font-black text-gray-500 select-none">{brand.name.charAt(0)}</span>
       </div>
     );
   }
@@ -220,8 +226,12 @@ export default function BrandsPortfolio() {
       result = result.filter((b) => categoryFilters.has(b.category));
     }
 
-    // Sort by revenue rank (ascending = highest revenue first)
-    result.sort((a, b) => a.revenueRank - b.revenueRank);
+    // Priority brands float to top, rest keep original order
+    result.sort((a, b) => {
+      const aPri = PRIORITY_DOMAINS.has(a.domain) ? 0 : 1;
+      const bPri = PRIORITY_DOMAINS.has(b.domain) ? 0 : 1;
+      return aPri - bPri;
+    });
 
     return result;
   }, [statusFilter, categoryFilters]);
@@ -274,17 +284,6 @@ export default function BrandsPortfolio() {
                   </button>
                 );
               })}
-            </div>
-          </div>
-
-          {/* Sort indicator */}
-          <div>
-            <h4 className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-600 mb-2.5">Sort By</h4>
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800/40 border border-gray-800">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-[#CCFF00]">
-                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span className="text-xs text-gray-300 font-medium">Est. Revenue</span>
             </div>
           </div>
 
@@ -358,7 +357,6 @@ export default function BrandsPortfolio() {
               {filtered.length} brand{filtered.length !== 1 ? "s" : ""}
               {statusFilter !== "all" || categoryFilters.size > 0 ? " (filtered)" : ""}
             </p>
-            <span className="text-[10px] text-gray-600 font-medium">Sorted by est. revenue</span>
           </div>
 
           {/* Grid */}
@@ -377,26 +375,13 @@ export default function BrandsPortfolio() {
                              hover:border-gray-600 transition-all duration-200
                              hover:shadow-[0_0_40px_-10px_rgba(204,255,0,0.08)]"
                 >
-                  {/* Logo panel with badges */}
-                  <div className="relative h-[120px] bg-white flex items-center justify-center p-6 shrink-0">
+                  {/* Logo panel */}
+                  <div className="h-[100px] bg-white flex items-center justify-center p-5 shrink-0">
                     <BrandLogo brand={brand} />
-
-                    {/* Status badge - top left */}
-                    <span className={`absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider
-                      ${statusMeta.bg} ${statusMeta.text} ${statusMeta.border} border backdrop-blur-sm`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot} ${brand.status === "live" ? "animate-pulse" : ""}`} />
-                      {statusMeta.label}
-                    </span>
-
-                    {/* Category badge - top right */}
-                    <span className={`absolute top-2.5 right-2.5 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider
-                      ${catMeta.bg} ${catMeta.color} ${catMeta.border} border backdrop-blur-sm`}>
-                      {catMeta.label}
-                    </span>
                   </div>
 
                   {/* Info panel */}
-                  <div className="flex flex-col flex-1 p-4 gap-1.5">
+                  <div className="flex flex-col flex-1 p-4 gap-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="text-sm font-bold text-white group-hover:text-[#CCFF00] transition-colors duration-150 truncate">
                         {brand.name}
@@ -410,6 +395,18 @@ export default function BrandsPortfolio() {
                       </svg>
                     </div>
                     <p className="text-[11px] text-gray-600 truncate">{brand.domain}</p>
+                    {/* Badges */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider
+                        ${statusMeta.bg} ${statusMeta.text} ${statusMeta.border} border`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot} ${brand.status === "live" ? "animate-pulse" : ""}`} />
+                        {statusMeta.label}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider
+                        ${catMeta.bg} ${catMeta.color} ${catMeta.border} border`}>
+                        {catMeta.label}
+                      </span>
+                    </div>
                   </div>
                 </a>
               );
