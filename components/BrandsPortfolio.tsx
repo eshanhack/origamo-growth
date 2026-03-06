@@ -18,6 +18,8 @@ interface Brand {
   bankroll?: boolean;
   /** Local logo path (overrides domain-based lookup) */
   logoSrc?: string;
+  /** ISO date string for when the brand was integrated (used for "Recently Integrated" sort) */
+  integratedAt?: string;
 }
 
 // ── Priority brands (hidden ordering — always float to top) ──────────
@@ -95,6 +97,7 @@ const BRANDS: Brand[] = [
   { name: "Bombastic", domain: "bombastic.com", url: "https://bombastic.com", category: "crypto", status: "soon" },
   { name: "Ember", domain: "emberfund.io", url: "https://emberfund.io", category: "crypto", status: "soon" },
   { name: "Drizzle", domain: "drizzle.bet", url: "https://drizzle.bet", category: "crypto", status: "live" },
+  { name: "Baywin", domain: "baywin.com", url: "https://baywin.com", category: "crypto", status: "live" },
 
   // ── On-chain ──
   { name: "Scatter", domain: "ui.scatter-fe.pages.dev", url: "https://ui.scatter-fe.pages.dev", category: "on-chain", status: "soon", bankroll: true, logoSrc: "/scatter-logo.png" },
@@ -180,6 +183,7 @@ export default function BrandsPortfolio() {
   const [categoryFilters, setCategoryFilters] = useState<Set<BrandCategory>>(new Set());
   const [bankrollFilter, setBankrollFilter] = useState(false);
   const [headerFilter, setHeaderFilter] = useState<string | null>(null);
+  const [sortRecent, setSortRecent] = useState(false);
 
   // Counts
   const allCount       = BRANDS.length;
@@ -241,15 +245,20 @@ export default function BrandsPortfolio() {
       result = result.filter((b) => b.bankroll);
     }
 
-    // Priority brands float to top, rest keep original order
-    result.sort((a, b) => {
-      const aPri = PRIORITY_DOMAINS.has(a.domain) ? 0 : 1;
-      const bPri = PRIORITY_DOMAINS.has(b.domain) ? 0 : 1;
-      return aPri - bPri;
-    });
+    if (sortRecent) {
+      // Reverse array order so brands added later (= more recently integrated) appear first
+      result.reverse();
+    } else {
+      // Priority brands float to top, rest keep original order
+      result.sort((a, b) => {
+        const aPri = PRIORITY_DOMAINS.has(a.domain) ? 0 : 1;
+        const bPri = PRIORITY_DOMAINS.has(b.domain) ? 0 : 1;
+        return aPri - bPri;
+      });
+    }
 
     return result;
-  }, [statusFilter, categoryFilters, bankrollFilter]);
+  }, [statusFilter, categoryFilters, bankrollFilter, sortRecent]);
 
   const CATEGORIES: BrandCategory[] = ["crypto", "sweeps", "regulated", "fiat", "black", "on-chain"];
 
@@ -394,12 +403,25 @@ export default function BrandsPortfolio() {
             </button>
           </div>
 
-          {/* Results count */}
+          {/* Results count + sort */}
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-gray-500">
               {filtered.length} brand{filtered.length !== 1 ? "s" : ""}
               {statusFilter !== "all" || categoryFilters.size > 0 || bankrollFilter ? " (filtered)" : ""}
             </p>
+            <button
+              onClick={() => setSortRecent((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-150
+                ${sortRecent
+                  ? "border-[#CCFF00]/30 text-[#CCFF00] bg-[#CCFF00]/10"
+                  : "border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-600"
+                }`}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                <path d="M12 5v14" /><path d="m19 12-7 7-7-7" />
+              </svg>
+              Recently Integrated
+            </button>
           </div>
 
           {/* Grid */}
