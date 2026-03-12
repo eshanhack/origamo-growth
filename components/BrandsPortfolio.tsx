@@ -460,8 +460,8 @@ function CSVImportModal({ open, onClose, onImport }: { open: boolean; onClose: (
 // ════════════════════════════════════════════════════════════════════
 // BRAND DETAIL PANEL
 // ════════════════════════════════════════════════════════════════════
-function BrandDetailPanel({ brand, onClose, onUpdate, onAddActivity }: {
-  brand: Brand; onClose: () => void; onUpdate: (b: Brand) => void; onAddActivity: (a: Omit<ActivityEntry, "id" | "timestamp">) => void;
+function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity }: {
+  brand: Brand; onClose: () => void; onUpdate: (b: Brand) => void; onDelete: (id: string) => void; onAddActivity: (a: Omit<ActivityEntry, "id" | "timestamp">) => void;
 }) {
   const [newNote, setNewNote] = useState("");
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -527,6 +527,8 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onAddActivity }: {
                 {domainFromUrl(brand.url)} <ExternalLink className="w-3 h-3" />
               </a>
             </div>
+            <button onClick={() => { if (confirm(`Delete "${brand.name}"? This cannot be undone.`)) onDelete(brand.id); }}
+              className="text-gray-600 hover:text-red-400 transition-colors" title="Delete brand"><Trash2 className="w-4 h-4" /></button>
             <button onClick={onClose} className="text-gray-500 hover:text-white"><X className="w-5 h-5" /></button>
           </div>
         </div>
@@ -1028,6 +1030,13 @@ export default function BrandsPortfolio() {
     if (selectedBrand?.id === b.id) setSelectedBrand(b);
   };
 
+  const deleteBrand = (id: string) => {
+    const brand = brands.find((b) => b.id === id);
+    setBrands((prev) => prev.filter((b) => b.id !== id));
+    setSelectedBrand(null);
+    if (brand) addActivity({ brandName: brand.name, action: "Brand deleted" });
+  };
+
   const handleStatusChange = (brandId: string, newStatus: BrandStatus) => {
     const brand = brands.find((b) => b.id === brandId);
     if (!brand || brand.status === newStatus) return;
@@ -1179,6 +1188,7 @@ export default function BrandsPortfolio() {
           brand={selectedBrand}
           onClose={() => setSelectedBrand(null)}
           onUpdate={updateBrand}
+          onDelete={deleteBrand}
           onAddActivity={addActivity}
         />
       )}
