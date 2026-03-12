@@ -209,8 +209,8 @@ function Dashboard() {
           {([
             ["overview",  "Overview"],
             ["upcoming",  "Brands"],
-            ["brands",    "Top 5 Brands Performance"],
-            ["insights",  "Growth Intelligence ✦"],
+            // ["brands",    "Top 5 Brands Performance"],
+            // ["insights",  "Growth Intelligence ✦"],
             ["data",      "All-time Data"],
           ] as [Tab, string][]).map(([tab, label]) => (
             <button
