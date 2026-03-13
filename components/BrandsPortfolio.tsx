@@ -859,6 +859,11 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
                             {fmtCurrency(brand.monthlyFees * 12)} Est/Year
                           </span>
                         )}
+                        {brand.monthlyFees && (brand.status === "churned" || brand.status === "lost") && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-red-500/10 text-red-400">
+                            -{fmtCurrency(brand.monthlyFees * 12)} Lost/Year
+                          </span>
+                        )}
                       </div>
                     </div>
                     <GripVertical className="w-3.5 h-3.5 text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5 cursor-grab" />
