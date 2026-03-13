@@ -783,6 +783,7 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
   const columns = useMemo(() => {
     const map: Record<BrandStatus, Brand[]> = { live: [], confirmed: [], pending: [], churned: [], lost: [] };
     brands.forEach((b) => map[b.status].push(b));
+    map.live.sort((a, b) => (b.monthlyFees ?? 0) - (a.monthlyFees ?? 0));
     return map;
   }, [brands]);
 
@@ -827,7 +828,7 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
                         <DaysBadge brand={brand} />
                         {brand.monthlyFees && brand.status === "live" && (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-[#CCFF00]/10 text-[#CCFF00]">
-                            <DollarSign className="w-2.5 h-2.5 inline" />{fmtCurrency(brand.monthlyFees).replace("$", "")}
+                            {fmtCurrency(brand.monthlyFees * 12)} Fees/Year
                           </span>
                         )}
                       </div>
