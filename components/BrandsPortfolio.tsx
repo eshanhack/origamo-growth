@@ -1397,13 +1397,6 @@ export default function BrandsPortfolio() {
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "brands-export.csv"; a.click();
   };
 
-  const resetData = () => {
-    if (confirm("Reset all brand data to defaults? This cannot be undone.")) {
-      const seed = buildSeedBrands();
-      setBrands(seed);
-      setActivity([{ id: uid(), brandName: "System", action: "Data reset to defaults", timestamp: now() }]);
-    }
-  };
 
   const activeFilterCount = [statusFilter !== "all", aggFilter !== "all", tagFilter !== null, lobbyFilter !== "all"].filter(Boolean).length;
 
@@ -1475,9 +1468,7 @@ export default function BrandsPortfolio() {
           <button onClick={exportCSV} className="p-2 rounded-lg border border-gray-800 text-gray-500 hover:text-white hover:border-gray-600 transition-all" title="Export CSV">
             <Download className="w-4 h-4" />
           </button>
-          <button onClick={resetData} className="p-2 rounded-lg border border-gray-800 text-gray-500 hover:text-red-400 hover:border-red-500/30 transition-all" title="Reset data">
-            <RefreshCw className="w-4 h-4" />
-          </button>
+
           <button onClick={() => setShowSettings(true)} className="p-2 rounded-lg border border-gray-800 text-gray-500 hover:text-[#CCFF00] hover:border-[#CCFF00]/30 transition-all" title="Settings">
             <Settings className="w-4 h-4" />
           </button>
