@@ -6,7 +6,8 @@ import {
   Filter, LayoutGrid, Table2, BarChart3, ChevronRight, ChevronDown,
   Upload, Download, Trash2, Edit3, Check, AlertTriangle, Globe,
   Send, Tag, Users, Building2, CalendarDays, Hash, DollarSign, Loader2,
-  ArrowUpDown, ScanSearch, Activity, RefreshCw, Settings
+  ArrowUpDown, ScanSearch, Activity, RefreshCw, Settings,
+  TrendingUp, TrendingDown, Minus, Shield, MapPin, Eye
 } from "lucide-react";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -17,12 +18,15 @@ type BrandStatus = "live" | "confirmed" | "pending" | "churned" | "lost";
 type Aggregator = string;
 type LobbyStatus = "Featured" | "Visible" | "Buried" | "Not Found" | "Unknown" | "Standalone Row" | "Top Row Homepage";
 type ViewMode = "kanban" | "table" | "dashboard";
+type BrandTier = "platinum" | "gold" | "silver" | "bronze";
 
 interface AppSettings {
   aggregators: string[];
   gameLibrary: string[];
+  regions: string[];
   stallingDaysPending: number;
   stallingDaysConfirmed: number;
+  churnRiskInactiveDays: number;
   defaultStatus: BrandStatus;
 }
 
@@ -60,6 +64,9 @@ interface Brand {
   feeRate?: number;
   monthlyFees?: number;
   blocker?: string;
+  region?: string;
+  prevMonthlyVolume?: number;
+  lastTouched?: string;
 }
 
 interface ActivityEntry {
@@ -76,12 +83,23 @@ const STATUSES: BrandStatus[] = ["live", "confirmed", "pending", "churned", "los
 const DEFAULT_AGGREGATORS: string[] = ["Hub88", "Softswiss", "Direct API", "Other"];
 const LOBBY_STATUSES: LobbyStatus[] = ["Featured", "Visible", "Buried", "Not Found", "Unknown", "Standalone Row", "Top Row Homepage"];
 
+const DEFAULT_REGIONS = ["Europe", "LATAM", "Asia", "North America", "Africa", "Oceania", "CIS", "MENA"];
+
 const DEFAULT_SETTINGS: AppSettings = {
   aggregators: DEFAULT_AGGREGATORS,
   gameLibrary: [],
+  regions: DEFAULT_REGIONS,
   stallingDaysPending: 30,
   stallingDaysConfirmed: 14,
+  churnRiskInactiveDays: 60,
   defaultStatus: "pending",
+};
+
+const TIER_CONFIG: Record<BrandTier, { label: string; color: string; bg: string; border: string }> = {
+  platinum: { label: "Platinum", color: "text-violet-300", bg: "bg-violet-500/10", border: "border-violet-500/30" },
+  gold:     { label: "Gold",     color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/30" },
+  silver:   { label: "Silver",   color: "text-gray-300",   bg: "bg-gray-400/10",   border: "border-gray-400/30" },
+  bronze:   { label: "Bronze",   color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30" },
 };
 
 const STATUS_CONFIG: Record<BrandStatus, { label: string; color: string; bg: string; border: string; dot: string }> = {
@@ -123,6 +141,95 @@ function isStalling(brand: Brand, settings: AppSettings = currentSettings): bool
 
 function domainFromUrl(url: string): string {
   try { return new URL(url).hostname; } catch { return url; }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// HEALTH SCORE & TIER (0-100)
+// ════════════════════════════════════════════════════════════════════
+function computeHealthScore(brand: Brand): number {
+  let score = 0;
+  // Revenue data (25 pts)
+  if (brand.monthlyFees && brand.monthlyFees > 0) score += 25;
+  else if (brand.monthlyVolume || brand.houseEdge || brand.feeRate) score += 10;
+  // Lobby position (20 pts)
+  const lobbyScores: Record<string, number> = { "Top Row Homepage": 20, Featured: 20, "Standalone Row": 18, Visible: 15, Buried: 5, "Not Found": 0, Unknown: 0 };
+  score += lobbyScores[brand.lobbyStatus] ?? 0;
+  // Games deployed (20 pts)
+  const gc = brand.games?.length ?? brand.gamesDeployed ?? 0;
+  score += gc >= 5 ? 20 : gc >= 3 ? 15 : gc >= 1 ? 10 : 0;
+  // No blocker (15 pts)
+  if (!brand.blocker) score += 15;
+  // Recent activity - note within 30 days (10 pts)
+  if (brand.notes.length > 0) {
+    const lastNote = brand.notes[brand.notes.length - 1];
+    const daysSince = daysBetween(lastNote.timestamp, now());
+    if (daysSince <= 30) score += 10;
+    else if (daysSince <= 60) score += 5;
+  }
+  // Not stalling (10 pts)
+  if (!isStalling(brand)) score += 10;
+  return Math.min(100, score);
+}
+
+function computeTier(score: number): BrandTier {
+  if (score >= 80) return "platinum";
+  if (score >= 60) return "gold";
+  if (score >= 40) return "silver";
+  return "bronze";
+}
+
+// ════════════════════════════════════════════════════════════════════
+// TREND COMPUTATION
+// ════════════════════════════════════════════════════════════════════
+function computeTrend(current?: number, previous?: number): "up" | "down" | "flat" | null {
+  if (current == null || previous == null || previous === 0) return null;
+  const pct = ((current - previous) / previous) * 100;
+  if (pct > 5) return "up";
+  if (pct < -5) return "down";
+  return "flat";
+}
+
+function getTrendPct(current?: number, previous?: number): number | null {
+  if (current == null || previous == null || previous === 0) return null;
+  return ((current - previous) / previous) * 100;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CHURN RISK (live brands only)
+// ════════════════════════════════════════════════════════════════════
+interface ChurnRisk {
+  reason: string;
+  severity: "high" | "medium";
+}
+
+function getChurnRisks(brand: Brand, inactiveDays: number = 60): ChurnRisk[] {
+  if (brand.status !== "live") return [];
+  const risks: ChurnRisk[] = [];
+  // Declining volume
+  const trend = computeTrend(brand.monthlyVolume, brand.prevMonthlyVolume);
+  if (trend === "down") risks.push({ reason: "Declining volume", severity: "high" });
+  // Poor lobby
+  if (brand.lobbyStatus === "Buried" || brand.lobbyStatus === "Not Found") {
+    risks.push({ reason: `Lobby: ${brand.lobbyStatus}`, severity: brand.lobbyStatus === "Not Found" ? "high" : "medium" });
+  }
+  // Has blocker
+  if (brand.blocker) risks.push({ reason: "Active blocker", severity: "high" });
+  // Inactive
+  const touched = brand.lastTouched || brand.notes[brand.notes.length - 1]?.timestamp || brand.dateAdded;
+  const daysSinceTouched = daysBetween(touched, now());
+  if (daysSinceTouched > inactiveDays) risks.push({ reason: `No activity in ${daysSinceTouched}d`, severity: daysSinceTouched > inactiveDays * 2 ? "high" : "medium" });
+  // Low game count
+  const games = brand.games?.length ?? brand.gamesDeployed ?? 0;
+  if (games === 0) risks.push({ reason: "No games deployed", severity: "medium" });
+  return risks;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// LAST TOUCHED
+// ════════════════════════════════════════════════════════════════════
+function getLastTouchedDays(brand: Brand): number {
+  const touched = brand.lastTouched || brand.notes[brand.notes.length - 1]?.timestamp || brand.dateAdded;
+  return daysBetween(touched, now());
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -293,6 +400,74 @@ function DaysBadge({ brand }: { brand: Brand }) {
 function LobbyBadge({ status }: { status: LobbyStatus }) {
   const c = LOBBY_CONFIG[status];
   return <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${c.bg} ${c.color}`}>{status}</span>;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// TIER BADGE
+// ════════════════════════════════════════════════════════════════════
+function TierBadge({ brand, showScore }: { brand: Brand; showScore?: boolean }) {
+  const score = computeHealthScore(brand);
+  const tier = computeTier(score);
+  const cfg = TIER_CONFIG[tier];
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium ${cfg.bg} ${cfg.color} border ${cfg.border}`}>
+      <Shield className="w-2.5 h-2.5" />
+      {cfg.label}{showScore && <span className="text-[8px] opacity-70">({score})</span>}
+    </span>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// TREND ARROW
+// ════════════════════════════════════════════════════════════════════
+function TrendArrow({ current, previous }: { current?: number; previous?: number }) {
+  const trend = computeTrend(current, previous);
+  const pct = getTrendPct(current, previous);
+  if (!trend) return null;
+  if (trend === "up") return (
+    <span className="inline-flex items-center gap-0.5 text-[9px] font-medium text-green-400">
+      <TrendingUp className="w-3 h-3" />{pct !== null && `+${pct.toFixed(0)}%`}
+    </span>
+  );
+  if (trend === "down") return (
+    <span className="inline-flex items-center gap-0.5 text-[9px] font-medium text-red-400">
+      <TrendingDown className="w-3 h-3" />{pct !== null && `${pct.toFixed(0)}%`}
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[9px] font-medium text-gray-500">
+      <Minus className="w-3 h-3" />Flat
+    </span>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CHURN RISK BADGE (for kanban/table)
+// ════════════════════════════════════════════════════════════════════
+function ChurnRiskBadge({ brand }: { brand: Brand }) {
+  const risks = getChurnRisks(brand, currentSettings.churnRiskInactiveDays);
+  if (risks.length === 0) return null;
+  const hasHigh = risks.some((r) => r.severity === "high");
+  return (
+    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium
+      ${hasHigh ? "bg-red-500/15 text-red-400 border border-red-500/30" : "bg-amber-500/10 text-amber-400 border border-amber-500/30"}`}>
+      <AlertTriangle className="w-2.5 h-2.5" />At Risk
+    </span>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// LAST TOUCHED BADGE
+// ════════════════════════════════════════════════════════════════════
+function LastTouchedBadge({ brand }: { brand: Brand }) {
+  const days = getLastTouchedDays(brand);
+  const warn = days > currentSettings.churnRiskInactiveDays;
+  if (days <= 7) return null;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[9px] font-medium ${warn ? "text-red-400" : days > 30 ? "text-amber-400" : "text-gray-500"}`}>
+      <Eye className="w-2.5 h-2.5" />{days}d ago
+    </span>
+  );
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -487,8 +662,8 @@ function CSVImportModal({ open, onClose, onImport, aggregators }: { open: boolea
 // ════════════════════════════════════════════════════════════════════
 // BRAND DETAIL PANEL
 // ════════════════════════════════════════════════════════════════════
-function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, aggregators, gameLibrary }: {
-  brand: Brand; onClose: () => void; onUpdate: (b: Brand) => void; onDelete: (id: string) => void; onAddActivity: (a: Omit<ActivityEntry, "id" | "timestamp">) => void; aggregators: string[]; gameLibrary: string[];
+function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, aggregators, gameLibrary, settings }: {
+  brand: Brand; onClose: () => void; onUpdate: (b: Brand) => void; onDelete: (id: string) => void; onAddActivity: (a: Omit<ActivityEntry, "id" | "timestamp">) => void; aggregators: string[]; gameLibrary: string[]; settings: AppSettings;
 }) {
   const [newNote, setNewNote] = useState("");
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -549,10 +724,17 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
           <div className="flex items-center gap-3">
             <BrandAvatar brand={brand} size="lg" />
             <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-bold text-white truncate">{brand.name}</h2>
-              <a href={brand.url} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-[#CCFF00] flex items-center gap-1">
-                {domainFromUrl(brand.url)} <ExternalLink className="w-3 h-3" />
-              </a>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-white truncate">{brand.name}</h2>
+                <TierBadge brand={brand} showScore />
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <a href={brand.url} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-[#CCFF00] flex items-center gap-1">
+                  {domainFromUrl(brand.url)} <ExternalLink className="w-3 h-3" />
+                </a>
+                {brand.region && <span className="text-[9px] text-gray-500 flex items-center gap-0.5"><MapPin className="w-2.5 h-2.5" />{brand.region}</span>}
+                <LastTouchedBadge brand={brand} />
+              </div>
             </div>
             <button onClick={() => { if (confirm(`Delete "${brand.name}"? This cannot be undone.`)) onDelete(brand.id); }}
               className="text-gray-600 hover:text-red-400 transition-colors" title="Delete brand"><Trash2 className="w-4 h-4" /></button>
@@ -579,6 +761,24 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
             </div>
           </div>
 
+          {/* Churn Risk Alerts (live brands) */}
+          {(() => {
+            const risks = getChurnRisks(brand, settings.churnRiskInactiveDays);
+            if (risks.length === 0) return null;
+            return (
+              <div className="px-3 py-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1.5 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Churn Risk ({risks.length})</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {risks.map((r, i) => (
+                    <span key={i} className={`px-2 py-0.5 rounded text-[9px] font-medium ${r.severity === "high" ? "bg-red-500/15 text-red-400" : "bg-amber-500/10 text-amber-400"}`}>
+                      {r.reason}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Key details grid */}
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -586,6 +786,14 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
               <select value={brand.aggregator} onChange={(e) => updateField("aggregator", e.target.value as Aggregator)}
                 className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50">
                 {aggregators.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">Region</label>
+              <select value={brand.region ?? ""} onChange={(e) => updateField("region", e.target.value || undefined)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50">
+                <option value="">— Select —</option>
+                {settings.regions.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
             {brand.status !== "live" && (
@@ -656,7 +864,9 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
                   className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" placeholder="e.g. 3.5" />
               </div>
               <div>
-                <label className="block text-[9px] text-gray-500 mb-1">Monthly Volume</label>
+                <label className="block text-[9px] text-gray-500 mb-1 flex items-center gap-1">
+                  Monthly Volume <TrendArrow current={brand.monthlyVolume} previous={brand.prevMonthlyVolume} />
+                </label>
                 <input type="number" value={brand.monthlyVolume ?? ""} onChange={(e) => {
                   const vol = e.target.value ? parseFloat(e.target.value) : undefined;
                   const he = brand.houseEdge;
@@ -664,6 +874,11 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
                   const fees = ggr && brand.feeRate ? ggr * (brand.feeRate / 100) : brand.monthlyFees;
                   onUpdate({ ...brand, monthlyVolume: vol, monthlyGGR: ggr, monthlyFees: fees });
                 }}
+                  className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" placeholder="$0" />
+              </div>
+              <div>
+                <label className="block text-[9px] text-gray-500 mb-1">Prev Month Volume</label>
+                <input type="number" value={brand.prevMonthlyVolume ?? ""} onChange={(e) => updateField("prevMonthlyVolume", e.target.value ? parseFloat(e.target.value) : undefined)}
                   className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" placeholder="$0" />
               </div>
               <div>
@@ -741,6 +956,7 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
               <div className="flex items-center gap-2 text-gray-400"><CalendarDays className="w-3.5 h-3.5 text-gray-600" /> Added: {fmtDate(brand.dateAdded)}</div>
               {brand.dateConfirmed && <div className="flex items-center gap-2 text-blue-400"><Check className="w-3.5 h-3.5" /> Confirmed: {fmtDate(brand.dateConfirmed)}</div>}
               {brand.dateLive && <div className="flex items-center gap-2 text-green-400"><Globe className="w-3.5 h-3.5" /> Live: {fmtDate(brand.dateLive)}</div>}
+              <div className="flex items-center gap-2 text-gray-500"><Eye className="w-3.5 h-3.5 text-gray-600" /> Last touched: {brand.lastTouched ? fmtDate(brand.lastTouched) : "Never"} ({getLastTouchedDays(brand)}d ago)</div>
             </div>
           </div>
 
@@ -846,9 +1062,11 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
                           className="text-gray-700 hover:text-gray-400 shrink-0"><ExternalLink className="w-3 h-3" /></a>
                       </div>
                       <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        <TierBadge brand={brand} />
                         <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-800 text-gray-400">{brand.aggregator}</span>
-                        <LobbyBadge status={brand.lobbyStatus} />
                         <DaysBadge brand={brand} />
+                        <ChurnRiskBadge brand={brand} />
+                        {brand.status === "live" && <TrendArrow current={brand.monthlyVolume} previous={brand.prevMonthlyVolume} />}
                         {brand.monthlyFees && brand.status === "live" && (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-[#CCFF00]/10 text-[#CCFF00]">
                             {fmtCurrency(brand.monthlyFees * 12)} Fees/Year
@@ -910,6 +1128,10 @@ function TableView({ brands, onSelectBrand }: { brands: Brand[]; onSelectBrand: 
         case "days": cmp = getDaysInStage(a) - getDaysInStage(b); break;
         case "lobby": cmp = a.lobbyStatus.localeCompare(b.lobbyStatus); break;
         case "dateAdded": cmp = new Date(a.dateAdded).getTime() - new Date(b.dateAdded).getTime(); break;
+        case "health": cmp = computeHealthScore(a) - computeHealthScore(b); break;
+        case "region": cmp = (a.region ?? "").localeCompare(b.region ?? ""); break;
+        case "lastTouched": cmp = getLastTouchedDays(a) - getLastTouchedDays(b); break;
+        case "fees": cmp = (a.monthlyFees ?? 0) - (b.monthlyFees ?? 0); break;
       }
       return sortAsc ? cmp : -cmp;
     });
@@ -937,13 +1159,13 @@ function TableView({ brands, onSelectBrand }: { brands: Brand[]; onSelectBrand: 
           <thead>
             <tr className="border-b border-gray-800 text-gray-500">
               <Th k="name">Name</Th>
+              <Th k="health">Tier</Th>
               <Th k="status">Status</Th>
+              <Th k="region">Region</Th>
               <Th k="aggregator">Aggregator</Th>
-              <th className="text-left px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">Contact</th>
+              <Th k="fees">Fees/yr</Th>
               <Th k="days">Days</Th>
-              <Th k="lobby">Lobby</Th>
-              <Th k="dateAdded">Added</Th>
-              <th className="text-left px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">Last Note</th>
+              <Th k="lastTouched">Touched</Th>
               <th className="text-left px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">Blocker</th>
             </tr>
           </thead>
@@ -964,14 +1186,23 @@ function TableView({ brands, onSelectBrand }: { brands: Brand[]; onSelectBrand: 
                     </div>
                   </div>
                 </td>
+                <td className="px-3 py-2.5"><TierBadge brand={brand} /></td>
                 <td className="px-3 py-2.5"><StatusBadge status={brand.status} small /></td>
+                <td className="px-3 py-2.5 text-xs text-gray-400">{brand.region || "—"}</td>
                 <td className="px-3 py-2.5 text-xs text-gray-400">{brand.aggregator}</td>
-                <td className="px-3 py-2.5 text-xs text-gray-500 truncate max-w-[120px]">{brand.contactName || "—"}</td>
+                <td className="px-3 py-2.5">
+                  {brand.monthlyFees ? (
+                    <span className="flex items-center gap-1 text-xs text-[#CCFF00]">
+                      {fmtCurrency(brand.monthlyFees * 12)}
+                      <TrendArrow current={brand.monthlyVolume} previous={brand.prevMonthlyVolume} />
+                    </span>
+                  ) : <span className="text-xs text-gray-700">—</span>}
+                </td>
                 <td className="px-3 py-2.5"><DaysBadge brand={brand} /></td>
-                <td className="px-3 py-2.5"><LobbyBadge status={brand.lobbyStatus} /></td>
-                <td className="px-3 py-2.5 text-xs text-gray-500">{fmtDate(brand.dateAdded)}</td>
-                <td className="px-3 py-2.5 text-[11px] text-gray-600 truncate max-w-[180px]">
-                  {brand.notes.length > 0 ? brand.notes[brand.notes.length - 1].text : "—"}
+                <td className="px-3 py-2.5">
+                  <span className={`text-[10px] ${getLastTouchedDays(brand) > currentSettings.churnRiskInactiveDays ? "text-red-400" : getLastTouchedDays(brand) > 30 ? "text-amber-400" : "text-gray-500"}`}>
+                    {getLastTouchedDays(brand)}d
+                  </span>
                 </td>
                 <td className="px-3 py-2.5 max-w-[180px]">
                   {brand.blocker ? (
@@ -998,8 +1229,8 @@ function TableView({ brands, onSelectBrand }: { brands: Brand[]; onSelectBrand: 
 const CHART_COLORS = ["#4ade80", "#60a5fa", "#fbbf24", "#9ca3af", "#f87171"];
 const AGG_COLORS = ["#CCFF00", "#60a5fa", "#f59e0b", "#a78bfa"];
 
-function DashboardView({ brands, activity, onSelectBrand, aggregators }: {
-  brands: Brand[]; activity: ActivityEntry[]; onSelectBrand: (b: Brand) => void; aggregators: string[];
+function DashboardView({ brands, activity, onSelectBrand, aggregators, settings }: {
+  brands: Brand[]; activity: ActivityEntry[]; onSelectBrand: (b: Brand) => void; aggregators: string[]; settings: AppSettings;
 }) {
   const statusData = STATUSES.map((s, i) => ({
     name: STATUS_CONFIG[s].label,
@@ -1117,6 +1348,76 @@ function DashboardView({ brands, activity, onSelectBrand, aggregators }: {
           )}
         </div>
       </div>
+
+      {/* Churn Risk + Needs Attention */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Churn Risk - live brands at risk */}
+        {(() => {
+          const atRisk = brands.filter((b) => b.status === "live" && getChurnRisks(b, settings.churnRiskInactiveDays).length > 0);
+          return (
+            <div className="bg-[#111] border border-gray-800 rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                <Shield className="w-4 h-4 text-red-400" /> Churn Risk ({atRisk.length})
+              </h3>
+              {atRisk.length === 0 ? (
+                <p className="text-xs text-gray-600 italic">No live brands at risk</p>
+              ) : (
+                <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                  {atRisk.map((b) => {
+                    const risks = getChurnRisks(b, settings.churnRiskInactiveDays);
+                    return (
+                      <button key={b.id} onClick={() => onSelectBrand(b)}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-red-500/20 bg-red-500/5 hover:border-red-500/40 transition-all text-left">
+                        <BrandAvatar brand={b} size="sm" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-white truncate block">{b.name}</span>
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {risks.map((r, i) => (
+                              <span key={i} className={`text-[8px] px-1 rounded ${r.severity === "high" ? "text-red-400 bg-red-500/10" : "text-amber-400 bg-amber-500/10"}`}>{r.reason}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-gray-600" />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Needs Attention - brands not touched recently */}
+        {(() => {
+          const stale = brands.filter((b) => b.status === "live" || b.status === "confirmed" || b.status === "pending")
+            .filter((b) => getLastTouchedDays(b) > settings.churnRiskInactiveDays)
+            .sort((a, b) => getLastTouchedDays(b) - getLastTouchedDays(a));
+          return (
+            <div className="bg-[#111] border border-gray-800 rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                <Eye className="w-4 h-4 text-amber-400" /> Needs Attention ({stale.length})
+              </h3>
+              {stale.length === 0 ? (
+                <p className="text-xs text-gray-600 italic">All active brands recently touched</p>
+              ) : (
+                <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                  {stale.map((b) => (
+                    <button key={b.id} onClick={() => onSelectBrand(b)}
+                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40 transition-all text-left">
+                      <BrandAvatar brand={b} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium text-white truncate block">{b.name}</span>
+                        <span className="text-[10px] text-gray-500">{STATUS_CONFIG[b.status].label} — last touched {getLastTouchedDays(b)}d ago</span>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-gray-600" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </div>
     </div>
   );
 }
@@ -1130,7 +1431,8 @@ function SettingsModal({ open, onClose, settings, onSave }: {
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [newAgg, setNewAgg] = useState("");
   const [newGame, setNewGame] = useState("");
-  const [tab, setTab] = useState<"aggregators" | "games" | "alerts">("aggregators");
+  const [newRegion, setNewRegion] = useState("");
+  const [tab, setTab] = useState<"aggregators" | "games" | "regions" | "alerts">("aggregators");
 
   useEffect(() => { if (open) setDraft(settings); }, [open, settings]);
 
@@ -1159,6 +1461,17 @@ function SettingsModal({ open, onClose, settings, onSave }: {
     setDraft({ ...draft, gameLibrary: draft.gameLibrary.filter((x) => x !== g) });
   };
 
+  const addRegion = () => {
+    const v = newRegion.trim();
+    if (!v || draft.regions.includes(v)) return;
+    setDraft({ ...draft, regions: [...draft.regions, v] });
+    setNewRegion("");
+  };
+
+  const removeRegion = (r: string) => {
+    setDraft({ ...draft, regions: draft.regions.filter((x) => x !== r) });
+  };
+
   const save = () => { onSave(draft); onClose(); };
 
   return (
@@ -1171,7 +1484,7 @@ function SettingsModal({ open, onClose, settings, onSave }: {
 
         {/* Tabs */}
         <div className="flex border-b border-gray-800">
-          {([["aggregators", "Aggregators"], ["games", "Game Library"], ["alerts", "Alerts & Defaults"]] as const).map(([k, label]) => (
+          {([["aggregators", "Aggregators"], ["games", "Games"], ["regions", "Regions"], ["alerts", "Alerts"]] as const).map(([k, label]) => (
             <button key={k} onClick={() => setTab(k)}
               className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors
                 ${tab === k ? "text-[#CCFF00] border-b-2 border-[#CCFF00]" : "text-gray-500 hover:text-gray-300"}`}>
@@ -1240,10 +1553,44 @@ function SettingsModal({ open, onClose, settings, onSave }: {
             </>
           )}
 
+          {/* Regions tab */}
+          {tab === "regions" && (
+            <>
+              <p className="text-xs text-gray-500">Manage market regions. These can be assigned to brands for geographic segmentation.</p>
+              <div className="flex gap-2">
+                <input value={newRegion} onChange={(e) => setNewRegion(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addRegion()}
+                  className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50"
+                  placeholder="New region name..." />
+                <button onClick={addRegion}
+                  className="px-3 py-2 rounded-lg text-sm font-medium bg-[#CCFF00] text-black hover:bg-[#b8e600]">
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              {draft.regions.length === 0 ? (
+                <p className="text-xs text-gray-600 italic py-4 text-center">No regions added yet.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {draft.regions.map((r) => (
+                    <div key={r} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-900/60 border border-gray-800">
+                      <span className="text-sm text-white">{r}</span>
+                      {DEFAULT_REGIONS.includes(r) ? (
+                        <span className="text-[9px] text-gray-600 uppercase tracking-wider">Default</span>
+                      ) : (
+                        <button onClick={() => removeRegion(r)} className="text-gray-600 hover:text-red-400"><X className="w-3.5 h-3.5" /></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] text-gray-600">{draft.regions.length} region{draft.regions.length !== 1 ? "s" : ""} configured</p>
+            </>
+          )}
+
           {/* Alerts & Defaults tab */}
           {tab === "alerts" && (
             <>
-              <p className="text-xs text-gray-500">Configure stalling alerts and default values for new brands.</p>
+              <p className="text-xs text-gray-500">Configure stalling alerts, churn risk thresholds, and default values for new brands.</p>
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1.5">Stalling alert: Pending (days)</label>
                 <input type="number" min={1} value={draft.stallingDaysPending} onChange={(e) => setDraft({ ...draft, stallingDaysPending: parseInt(e.target.value) || 30 })}
@@ -1255,6 +1602,12 @@ function SettingsModal({ open, onClose, settings, onSave }: {
                 <input type="number" min={1} value={draft.stallingDaysConfirmed} onChange={(e) => setDraft({ ...draft, stallingDaysConfirmed: parseInt(e.target.value) || 14 })}
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
                 <p className="text-[10px] text-gray-600 mt-1">Brands in &quot;Confirmed&quot; longer than this will show a stalling warning.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1.5">Churn risk: Inactive days threshold</label>
+                <input type="number" min={1} value={draft.churnRiskInactiveDays} onChange={(e) => setDraft({ ...draft, churnRiskInactiveDays: parseInt(e.target.value) || 60 })}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
+                <p className="text-[10px] text-gray-600 mt-1">Brands with no activity for this many days will show a churn risk alert.</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1.5">Default status for new brands</label>
@@ -1289,6 +1642,8 @@ export default function BrandsPortfolio() {
   const [aggFilter, setAggFilter] = useState<Aggregator | "all">("all");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [lobbyFilter, setLobbyFilter] = useState<LobbyStatus | "all">("all");
+  const [tierFilter, setTierFilter] = useState<BrandTier | "all">("all");
+  const [regionFilter, setRegionFilter] = useState<string | "all">("all");
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -1349,8 +1704,10 @@ export default function BrandsPortfolio() {
     if (aggFilter !== "all") result = result.filter((b) => b.aggregator === aggFilter);
     if (tagFilter) result = result.filter((b) => b.tags.includes(tagFilter));
     if (lobbyFilter !== "all") result = result.filter((b) => b.lobbyStatus === lobbyFilter);
+    if (tierFilter !== "all") result = result.filter((b) => computeTier(computeHealthScore(b)) === tierFilter);
+    if (regionFilter !== "all") result = result.filter((b) => b.region === regionFilter);
     return result;
-  }, [brands, search, statusFilter, aggFilter, tagFilter, lobbyFilter]);
+  }, [brands, search, statusFilter, aggFilter, tagFilter, lobbyFilter, tierFilter, regionFilter]);
 
   const allTags = useMemo(() => Array.from(new Set(brands.flatMap((b) => b.tags))).sort(), [brands]);
 
@@ -1360,8 +1717,9 @@ export default function BrandsPortfolio() {
   };
 
   const updateBrand = (b: Brand) => {
-    setBrands((prev) => prev.map((x) => x.id === b.id ? b : x));
-    if (selectedBrand?.id === b.id) setSelectedBrand(b);
+    const updated = { ...b, lastTouched: now() };
+    setBrands((prev) => prev.map((x) => x.id === updated.id ? updated : x));
+    if (selectedBrand?.id === updated.id) setSelectedBrand(updated);
   };
 
   const deleteBrand = (id: string) => {
@@ -1398,7 +1756,7 @@ export default function BrandsPortfolio() {
   };
 
 
-  const activeFilterCount = [statusFilter !== "all", aggFilter !== "all", tagFilter !== null, lobbyFilter !== "all"].filter(Boolean).length;
+  const activeFilterCount = [statusFilter !== "all", aggFilter !== "all", tagFilter !== null, lobbyFilter !== "all", tierFilter !== "all", regionFilter !== "all"].filter(Boolean).length;
 
   const revenueMetrics = useMemo(() => {
     const sumFees = (statuses: BrandStatus[]) =>
@@ -1499,6 +1857,20 @@ export default function BrandsPortfolio() {
           <option value="all">All Lobby</option>
           {LOBBY_STATUSES.map((l) => <option key={l} value={l}>{l}</option>)}
         </select>
+        {/* Tier */}
+        <select value={tierFilter} onChange={(e) => setTierFilter(e.target.value as BrandTier | "all")}
+          className={`bg-gray-900/60 border rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-[#CCFF00]/40
+            ${tierFilter !== "all" ? "border-[#CCFF00]/30 text-[#CCFF00]" : "border-gray-800 text-gray-400"}`}>
+          <option value="all">All Tiers</option>
+          {(["platinum", "gold", "silver", "bronze"] as BrandTier[]).map((t) => <option key={t} value={t}>{TIER_CONFIG[t].label}</option>)}
+        </select>
+        {/* Region */}
+        <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)}
+          className={`bg-gray-900/60 border rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-[#CCFF00]/40
+            ${regionFilter !== "all" ? "border-[#CCFF00]/30 text-[#CCFF00]" : "border-gray-800 text-gray-400"}`}>
+          <option value="all">All Regions</option>
+          {settings.regions.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
         {/* Tags */}
         {allTags.length > 0 && (
           <select value={tagFilter ?? ""} onChange={(e) => setTagFilter(e.target.value || null)}
@@ -1510,7 +1882,7 @@ export default function BrandsPortfolio() {
         )}
 
         {activeFilterCount > 0 && (
-          <button onClick={() => { setStatusFilter("all"); setAggFilter("all"); setTagFilter(null); setLobbyFilter("all"); }}
+          <button onClick={() => { setStatusFilter("all"); setAggFilter("all"); setTagFilter(null); setLobbyFilter("all"); setTierFilter("all"); setRegionFilter("all"); }}
             className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium text-red-400 hover:bg-red-500/10 transition-colors">
             <X className="w-3 h-3" /> Clear ({activeFilterCount})
           </button>
@@ -1527,7 +1899,7 @@ export default function BrandsPortfolio() {
         <TableView brands={filtered} onSelectBrand={setSelectedBrand} />
       )}
       {view === "dashboard" && (
-        <DashboardView brands={filtered} activity={activity} onSelectBrand={setSelectedBrand} aggregators={aggregators} />
+        <DashboardView brands={filtered} activity={activity} onSelectBrand={setSelectedBrand} aggregators={aggregators} settings={settings} />
       )}
 
       {/* ── Modals ──────────────────────────────────────────────────── */}
@@ -1545,6 +1917,7 @@ export default function BrandsPortfolio() {
           onAddActivity={addActivity}
           aggregators={aggregators}
           gameLibrary={settings.gameLibrary}
+          settings={settings}
         />
       )}
 
