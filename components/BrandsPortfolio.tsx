@@ -783,7 +783,7 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
   const columns = useMemo(() => {
     const map: Record<BrandStatus, Brand[]> = { live: [], confirmed: [], pending: [], churned: [], lost: [] };
     brands.forEach((b) => map[b.status].push(b));
-    map.live.sort((a, b) => (b.monthlyFees ?? 0) - (a.monthlyFees ?? 0));
+    STATUSES.forEach((s) => map[s].sort((a, b) => (b.monthlyFees ?? 0) - (a.monthlyFees ?? 0)));
     return map;
   }, [brands]);
 
