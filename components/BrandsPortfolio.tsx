@@ -1407,14 +1407,6 @@ export default function BrandsPortfolio() {
 
   const activeFilterCount = [statusFilter !== "all", aggFilter !== "all", tagFilter !== null, lobbyFilter !== "all"].filter(Boolean).length;
 
-  if (!loaded) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-600" />
-      </div>
-    );
-  }
-
   const revenueMetrics = useMemo(() => {
     const sumFees = (statuses: BrandStatus[]) =>
       brands.filter((b) => statuses.includes(b.status)).reduce((s, b) => s + (b.monthlyFees ?? 0), 0);
@@ -1422,6 +1414,14 @@ export default function BrandsPortfolio() {
     const pipelineMRR = sumFees(["live", "confirmed", "pending"]);
     return { arr: liveMRR * 12, mrr: liveMRR, pipelineARR: pipelineMRR * 12, pipelineMRR };
   }, [brands]);
+
+  if (!loaded) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 pb-6">
