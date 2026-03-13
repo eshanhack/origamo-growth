@@ -787,11 +787,20 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
     return map;
   }, [brands]);
 
+  const liveAnnual = useMemo(() =>
+    columns.live.reduce((sum, b) => sum + (b.monthlyFees ?? 0) * 12, 0)
+  , [columns]);
+
   return (
     <div className="flex gap-4 overflow-x-auto pb-4 -mx-2 px-2">
       {STATUSES.map((status) => {
         const cfg = STATUS_CONFIG[status];
         const col = columns[status];
+        const colAnnual = col.reduce((sum, b) => sum + (b.monthlyFees ?? 0) * 12, 0);
+        const isNonLive = status !== "live";
+        const isUpside = status === "confirmed" || status === "pending";
+        const isDownside = status === "churned" || status === "lost";
+        const combined = liveAnnual + (isUpside ? colAnnual : -colAnnual);
         return (
           <div key={status}
             className={`flex-1 min-w-[260px] max-w-[340px] rounded-xl border transition-all
@@ -800,10 +809,24 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
             onDragLeave={() => setDragOver(null)}
             onDrop={() => { if (dragId) { onStatusChange(dragId, status); setDragId(null); setDragOver(null); } }}>
             {/* Column header */}
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800/50">
-              <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
-              <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
-              <span className="ml-auto text-[10px] text-gray-600 font-medium">{col.length}</span>
+            <div className="px-4 py-3 border-b border-gray-800/50">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+                <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
+                <span className="ml-auto text-[10px] text-gray-600 font-medium">{col.length} brand{col.length !== 1 ? "s" : ""}</span>
+              </div>
+              {colAnnual > 0 && (
+                <div className="mt-1.5">
+                  <span className={`text-sm font-bold ${status === "live" ? "text-[#CCFF00]" : status === "confirmed" ? "text-blue-400" : "text-gray-400"}`}>
+                    {fmtCurrency(colAnnual)}/yr
+                  </span>
+                  {isNonLive && colAnnual > 0 && (
+                    <p className={`text-[9px] mt-0.5 ${isUpside ? "text-green-500/70" : "text-red-400/70"}`}>
+                      {isUpside ? "+" : "-"}{fmtCurrency(colAnnual)} → {fmtCurrency(combined)}/yr total
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
             {/* Cards */}
             <div className="p-2 space-y-2 min-h-[100px]">
@@ -829,6 +852,11 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
                         {brand.monthlyFees && brand.status === "live" && (
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-[#CCFF00]/10 text-[#CCFF00]">
                             {fmtCurrency(brand.monthlyFees * 12)} Fees/Year
+                          </span>
+                        )}
+                        {brand.monthlyFees && brand.status === "confirmed" && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-blue-500/10 text-blue-400">
+                            {fmtCurrency(brand.monthlyFees * 12)} Est/Year
                           </span>
                         )}
                       </div>
