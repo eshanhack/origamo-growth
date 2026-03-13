@@ -277,7 +277,7 @@ function StatusBadge({ status, small }: { status: BrandStatus; small?: boolean }
 function DaysBadge({ brand }: { brand: Brand }) {
   const days = getDaysInStage(brand);
   const stalling = isStalling(brand);
-  if (brand.status === "churned" || brand.status === "lost") return null;
+  if (brand.status === "churned" || brand.status === "lost" || brand.status === "live") return null;
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium
       ${stalling ? "bg-red-500/15 text-red-400 border border-red-500/30" : "bg-gray-800 text-gray-500"}`}>
@@ -588,11 +588,13 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
                 {aggregators.map((a) => <option key={a} value={a}>{a}</option>)}
               </select>
             </div>
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">Expected Go-Live</label>
-              <input type="date" value={brand.expectedGoLive ?? ""} onChange={(e) => updateField("expectedGoLive", e.target.value || undefined)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50 [color-scheme:dark]" />
-            </div>
+            {brand.status !== "live" && (
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">Expected Go-Live</label>
+                <input type="date" value={brand.expectedGoLive ?? ""} onChange={(e) => updateField("expectedGoLive", e.target.value || undefined)}
+                  className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50 [color-scheme:dark]" />
+              </div>
+            )}
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">Lobby Status</label>
               <div className="flex items-center gap-2">
@@ -823,6 +825,11 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
                         <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-800 text-gray-400">{brand.aggregator}</span>
                         <LobbyBadge status={brand.lobbyStatus} />
                         <DaysBadge brand={brand} />
+                        {brand.monthlyFees && brand.status === "live" && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-[#CCFF00]/10 text-[#CCFF00]">
+                            <DollarSign className="w-2.5 h-2.5 inline" />{fmtCurrency(brand.monthlyFees).replace("$", "")}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <GripVertical className="w-3.5 h-3.5 text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5 cursor-grab" />
