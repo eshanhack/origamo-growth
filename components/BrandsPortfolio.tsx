@@ -15,7 +15,7 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveCo
 // ════════════════════════════════════════════════════════════════════
 type BrandStatus = "live" | "confirmed" | "pending" | "churned" | "lost";
 type Aggregator = string;
-type LobbyStatus = "Featured" | "Visible" | "Buried" | "Not Found" | "Unknown";
+type LobbyStatus = "Featured" | "Visible" | "Buried" | "Not Found" | "Unknown" | "Standalone Row" | "Top Row Homepage";
 type ViewMode = "kanban" | "table" | "dashboard";
 
 interface AppSettings {
@@ -53,8 +53,13 @@ interface Brand {
   lobbyLastChecked?: string;
   gamesDeployed?: number;
   games?: string[];
-  monthlyHandle?: number;
+  expectedGoLive?: string;
+  houseEdge?: number;
+  monthlyVolume?: number;
   monthlyGGR?: number;
+  feeRate?: number;
+  monthlyFees?: number;
+  blocker?: string;
 }
 
 interface ActivityEntry {
@@ -69,7 +74,7 @@ interface ActivityEntry {
 // ════════════════════════════════════════════════════════════════════
 const STATUSES: BrandStatus[] = ["live", "confirmed", "pending", "churned", "lost"];
 const DEFAULT_AGGREGATORS: string[] = ["Hub88", "Softswiss", "Direct API", "Other"];
-const LOBBY_STATUSES: LobbyStatus[] = ["Featured", "Visible", "Buried", "Not Found", "Unknown"];
+const LOBBY_STATUSES: LobbyStatus[] = ["Featured", "Visible", "Buried", "Not Found", "Unknown", "Standalone Row", "Top Row Homepage"];
 
 const DEFAULT_SETTINGS: AppSettings = {
   aggregators: DEFAULT_AGGREGATORS,
@@ -93,6 +98,8 @@ const LOBBY_CONFIG: Record<LobbyStatus, { color: string; bg: string }> = {
   Buried:    { color: "text-amber-400",  bg: "bg-amber-500/10" },
   "Not Found": { color: "text-red-400",  bg: "bg-red-500/10" },
   Unknown:   { color: "text-gray-400",   bg: "bg-gray-500/10" },
+  "Standalone Row": { color: "text-purple-400", bg: "bg-purple-500/10" },
+  "Top Row Homepage": { color: "text-emerald-400", bg: "bg-emerald-500/10" },
 };
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -205,7 +212,6 @@ function buildSeedBrands(): Brand[] {
     tags: s.tags || [],
     lobbyStatus: s.lobbyStatus || "Unknown",
     gamesDeployed: s.gamesDeployed,
-    monthlyHandle: s.monthlyHandle,
     monthlyGGR: s.monthlyGGR,
   }));
 }
@@ -583,6 +589,11 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
               </select>
             </div>
             <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">Expected Go-Live</label>
+              <input type="date" value={brand.expectedGoLive ?? ""} onChange={(e) => updateField("expectedGoLive", e.target.value || undefined)}
+                className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50 [color-scheme:dark]" />
+            </div>
+            <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">Lobby Status</label>
               <div className="flex items-center gap-2">
                 <select value={brand.lobbyStatus} onChange={(e) => updateField("lobbyStatus", e.target.value as LobbyStatus)}
@@ -625,16 +636,67 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
                 </div>
               )}
             </div>
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">Monthly Handle</label>
-              <input type="number" value={brand.monthlyHandle ?? ""} onChange={(e) => updateField("monthlyHandle", e.target.value ? parseFloat(e.target.value) : undefined)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" placeholder="$0" />
+          </div>
+
+          {/* Financials */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-2">Financials</label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[9px] text-gray-500 mb-1">House Edge %</label>
+                <input type="number" step="0.01" value={brand.houseEdge ?? ""} onChange={(e) => {
+                  const he = e.target.value ? parseFloat(e.target.value) : undefined;
+                  const vol = brand.monthlyVolume;
+                  const ggr = he && vol ? vol * (he / 100) : brand.monthlyGGR;
+                  const fees = ggr && brand.feeRate ? ggr * (brand.feeRate / 100) : brand.monthlyFees;
+                  onUpdate({ ...brand, houseEdge: he, monthlyGGR: ggr, monthlyFees: fees });
+                }}
+                  className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" placeholder="e.g. 3.5" />
+              </div>
+              <div>
+                <label className="block text-[9px] text-gray-500 mb-1">Monthly Volume</label>
+                <input type="number" value={brand.monthlyVolume ?? ""} onChange={(e) => {
+                  const vol = e.target.value ? parseFloat(e.target.value) : undefined;
+                  const he = brand.houseEdge;
+                  const ggr = vol && he ? vol * (he / 100) : undefined;
+                  const fees = ggr && brand.feeRate ? ggr * (brand.feeRate / 100) : brand.monthlyFees;
+                  onUpdate({ ...brand, monthlyVolume: vol, monthlyGGR: ggr, monthlyFees: fees });
+                }}
+                  className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" placeholder="$0" />
+              </div>
+              <div>
+                <label className="block text-[9px] text-gray-500 mb-1">Monthly GGR <span className="text-gray-700">(auto)</span></label>
+                <div className="w-full bg-gray-950 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-gray-400">
+                  {brand.monthlyGGR ? fmtCurrency(brand.monthlyGGR) : "—"}
+                </div>
+                <p className="text-[8px] text-gray-700 mt-0.5">= Volume × House Edge</p>
+              </div>
+              <div>
+                <label className="block text-[9px] text-gray-500 mb-1">Fee Rate %</label>
+                <input type="number" step="0.01" value={brand.feeRate ?? ""} onChange={(e) => {
+                  const fr = e.target.value ? parseFloat(e.target.value) : undefined;
+                  const fees = fr && brand.monthlyGGR ? brand.monthlyGGR * (fr / 100) : undefined;
+                  onUpdate({ ...brand, feeRate: fr, monthlyFees: fees });
+                }}
+                  className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" placeholder="e.g. 15" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[9px] text-gray-500 mb-1">Monthly Fees <span className="text-gray-700">(auto)</span></label>
+                <div className="w-full bg-gray-950 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm font-medium text-[#CCFF00]">
+                  {brand.monthlyFees ? fmtCurrency(brand.monthlyFees) : "—"}
+                </div>
+                <p className="text-[8px] text-gray-700 mt-0.5">= Monthly GGR × Fee Rate</p>
+              </div>
             </div>
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">Monthly GGR</label>
-              <input type="number" value={brand.monthlyGGR ?? ""} onChange={(e) => updateField("monthlyGGR", e.target.value ? parseFloat(e.target.value) : undefined)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" placeholder="$0" />
-            </div>
+          </div>
+
+          {/* Blocker */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">Blocker</label>
+            <textarea value={brand.blocker ?? ""} onChange={(e) => updateField("blocker", e.target.value || undefined)}
+              rows={2} placeholder="Describe any blocker preventing progress..."
+              className="w-full bg-gray-900 border border-red-500/30 rounded-lg px-2.5 py-1.5 text-sm text-red-300 placeholder-gray-600 focus:outline-none focus:border-red-500/50 resize-none" />
+            {brand.blocker && <p className="text-[9px] text-red-400/60 mt-1">This will appear on the kanban card and table view.</p>}
           </div>
 
           {/* Contact */}
@@ -765,7 +827,15 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
                     </div>
                     <GripVertical className="w-3.5 h-3.5 text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5 cursor-grab" />
                   </div>
-                  {brand.notes.length > 0 && (
+                  {brand.blocker && (
+                    <div className="mt-2 ml-[42px] px-2 py-1 rounded-md bg-red-500/10 border border-red-500/20">
+                      <p className="text-[10px] text-red-400 truncate">
+                        <AlertTriangle className="w-2.5 h-2.5 inline mr-1" />
+                        {brand.blocker}
+                      </p>
+                    </div>
+                  )}
+                  {brand.notes.length > 0 && !brand.blocker && (
                     <p className="text-[10px] text-gray-600 mt-2 truncate pl-[42px]">
                       <MessageSquare className="w-2.5 h-2.5 inline mr-1" />
                       {brand.notes[brand.notes.length - 1].text}
@@ -833,6 +903,7 @@ function TableView({ brands, onSelectBrand }: { brands: Brand[]; onSelectBrand: 
               <Th k="lobby">Lobby</Th>
               <Th k="dateAdded">Added</Th>
               <th className="text-left px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">Last Note</th>
+              <th className="text-left px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">Blocker</th>
             </tr>
           </thead>
           <tbody>
@@ -860,6 +931,16 @@ function TableView({ brands, onSelectBrand }: { brands: Brand[]; onSelectBrand: 
                 <td className="px-3 py-2.5 text-xs text-gray-500">{fmtDate(brand.dateAdded)}</td>
                 <td className="px-3 py-2.5 text-[11px] text-gray-600 truncate max-w-[180px]">
                   {brand.notes.length > 0 ? brand.notes[brand.notes.length - 1].text : "—"}
+                </td>
+                <td className="px-3 py-2.5 max-w-[180px]">
+                  {brand.blocker ? (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-red-400 border border-red-500/20 truncate max-w-full">
+                      <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                      <span className="truncate">{brand.blocker}</span>
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-gray-700">—</span>
+                  )}
                 </td>
               </tr>
             ))}
