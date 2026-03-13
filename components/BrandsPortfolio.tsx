@@ -6,7 +6,7 @@ import {
   Filter, LayoutGrid, Table2, BarChart3, ChevronRight, ChevronDown,
   Upload, Download, Trash2, Edit3, Check, AlertTriangle, Globe,
   Send, Tag, Users, Building2, CalendarDays, Hash, DollarSign, Loader2,
-  ArrowUpDown, ScanSearch, Activity, RefreshCw
+  ArrowUpDown, ScanSearch, Activity, RefreshCw, Settings
 } from "lucide-react";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -14,9 +14,17 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveCo
 // TYPES
 // ════════════════════════════════════════════════════════════════════
 type BrandStatus = "live" | "confirmed" | "pending" | "churned" | "lost";
-type Aggregator = "Hub88" | "Softswiss" | "Direct API" | "Other";
+type Aggregator = string;
 type LobbyStatus = "Featured" | "Visible" | "Buried" | "Not Found" | "Unknown";
 type ViewMode = "kanban" | "table" | "dashboard";
+
+interface AppSettings {
+  aggregators: string[];
+  gameLibrary: string[];
+  stallingDaysPending: number;
+  stallingDaysConfirmed: number;
+  defaultStatus: BrandStatus;
+}
 
 interface Note {
   id: string;
@@ -44,6 +52,7 @@ interface Brand {
   lobbyStatus: LobbyStatus;
   lobbyLastChecked?: string;
   gamesDeployed?: number;
+  games?: string[];
   monthlyHandle?: number;
   monthlyGGR?: number;
 }
@@ -59,8 +68,16 @@ interface ActivityEntry {
 // CONSTANTS
 // ════════════════════════════════════════════════════════════════════
 const STATUSES: BrandStatus[] = ["live", "confirmed", "pending", "churned", "lost"];
-const AGGREGATORS: Aggregator[] = ["Hub88", "Softswiss", "Direct API", "Other"];
+const DEFAULT_AGGREGATORS: string[] = ["Hub88", "Softswiss", "Direct API", "Other"];
 const LOBBY_STATUSES: LobbyStatus[] = ["Featured", "Visible", "Buried", "Not Found", "Unknown"];
+
+const DEFAULT_SETTINGS: AppSettings = {
+  aggregators: DEFAULT_AGGREGATORS,
+  gameLibrary: [],
+  stallingDaysPending: 30,
+  stallingDaysConfirmed: 14,
+  defaultStatus: "pending",
+};
 
 const STATUS_CONFIG: Record<BrandStatus, { label: string; color: string; bg: string; border: string; dot: string }> = {
   live:      { label: "Live",      color: "text-green-400",  bg: "bg-green-500/10",  border: "border-green-500/30", dot: "bg-green-400" },
@@ -92,9 +109,9 @@ function getDaysInStage(brand: Brand): number {
   return daysBetween(ref || brand.dateAdded, now());
 }
 
-function isStalling(brand: Brand): boolean {
+function isStalling(brand: Brand, settings: AppSettings = currentSettings): boolean {
   const days = getDaysInStage(brand);
-  return (brand.status === "pending" && days > 30) || (brand.status === "confirmed" && days > 14);
+  return (brand.status === "pending" && days > settings.stallingDaysPending) || (brand.status === "confirmed" && days > settings.stallingDaysConfirmed);
 }
 
 function domainFromUrl(url: string): string {
@@ -106,6 +123,10 @@ function domainFromUrl(url: string): string {
 // ════════════════════════════════════════════════════════════════════
 const STORAGE_KEY_BRANDS = "origamo-brands-v2";
 const STORAGE_KEY_LOG = "origamo-activity-log";
+const STORAGE_KEY_SETTINGS = "origamo-settings-v1";
+
+// Module-level settings ref so sub-components can read current settings without prop drilling
+let currentSettings: AppSettings = DEFAULT_SETTINGS;
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -271,13 +292,13 @@ function LobbyBadge({ status }: { status: LobbyStatus }) {
 // ════════════════════════════════════════════════════════════════════
 // ADD BRAND MODAL
 // ════════════════════════════════════════════════════════════════════
-function AddBrandModal({ open, onClose, onAdd, existingNames }: {
-  open: boolean; onClose: () => void; onAdd: (b: Brand) => void; existingNames: Set<string>;
+function AddBrandModal({ open, onClose, onAdd, existingNames, aggregators, defaultStatus }: {
+  open: boolean; onClose: () => void; onAdd: (b: Brand) => void; existingNames: Set<string>; aggregators: string[]; defaultStatus: BrandStatus;
 }) {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
-  const [status, setStatus] = useState<BrandStatus>("pending");
-  const [aggregator, setAggregator] = useState<Aggregator>("Hub88");
+  const [status, setStatus] = useState<BrandStatus>(defaultStatus);
+  const [aggregator, setAggregator] = useState<Aggregator>(aggregators[0] || "Hub88");
   const [aggOther, setAggOther] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -323,7 +344,7 @@ function AddBrandModal({ open, onClose, onAdd, existingNames }: {
     };
     onAdd(brand);
     onClose();
-    setName(""); setUrl(""); setStatus("pending"); setAggregator("Hub88"); setAggOther("");
+    setName(""); setUrl(""); setStatus(defaultStatus); setAggregator(aggregators[0] || "Hub88"); setAggOther("");
     setContactName(""); setContactEmail(""); setContactTg(""); setTags(""); setNote("");
   };
 
@@ -364,7 +385,7 @@ function AddBrandModal({ open, onClose, onAdd, existingNames }: {
               <label className="block text-xs font-medium text-gray-400 mb-1.5">Aggregator *</label>
               <select value={aggregator} onChange={(e) => setAggregator(e.target.value as Aggregator)}
                 className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50">
-                {AGGREGATORS.map((a) => <option key={a} value={a}>{a}</option>)}
+                {aggregators.map((a) => <option key={a} value={a}>{a}</option>)}
               </select>
             </div>
           </div>
@@ -409,7 +430,7 @@ function AddBrandModal({ open, onClose, onAdd, existingNames }: {
 // ════════════════════════════════════════════════════════════════════
 // CSV IMPORT MODAL
 // ════════════════════════════════════════════════════════════════════
-function CSVImportModal({ open, onClose, onImport }: { open: boolean; onClose: () => void; onImport: (brands: Brand[]) => void }) {
+function CSVImportModal({ open, onClose, onImport, aggregators }: { open: boolean; onClose: () => void; onImport: (brands: Brand[]) => void; aggregators: string[] }) {
   const [csv, setCsv] = useState("");
 
   if (!open) return null;
@@ -425,7 +446,7 @@ function CSVImportModal({ open, onClose, onImport }: { open: boolean; onClose: (
       brands.push({
         id: uid(), name, url: website.startsWith("http") ? website : `https://${website}`,
         status: (stat?.toLowerCase() as BrandStatus) || "pending",
-        aggregator: (AGGREGATORS.includes(agg as Aggregator) ? agg : "Hub88") as Aggregator,
+        aggregator: (aggregators.includes(agg) ? agg : aggregators[0] || "Hub88") as Aggregator,
         dateAdded: n, notes: [{ id: uid(), text: "Imported via CSV", timestamp: n, auto: true }],
         tags: [], lobbyStatus: "Unknown",
       });
@@ -460,8 +481,8 @@ function CSVImportModal({ open, onClose, onImport }: { open: boolean; onClose: (
 // ════════════════════════════════════════════════════════════════════
 // BRAND DETAIL PANEL
 // ════════════════════════════════════════════════════════════════════
-function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity }: {
-  brand: Brand; onClose: () => void; onUpdate: (b: Brand) => void; onDelete: (id: string) => void; onAddActivity: (a: Omit<ActivityEntry, "id" | "timestamp">) => void;
+function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, aggregators, gameLibrary }: {
+  brand: Brand; onClose: () => void; onUpdate: (b: Brand) => void; onDelete: (id: string) => void; onAddActivity: (a: Omit<ActivityEntry, "id" | "timestamp">) => void; aggregators: string[]; gameLibrary: string[];
 }) {
   const [newNote, setNewNote] = useState("");
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -558,7 +579,7 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity }:
               <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">Aggregator</label>
               <select value={brand.aggregator} onChange={(e) => updateField("aggregator", e.target.value as Aggregator)}
                 className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50">
-                {AGGREGATORS.map((a) => <option key={a} value={a}>{a}</option>)}
+                {aggregators.map((a) => <option key={a} value={a}>{a}</option>)}
               </select>
             </div>
             <div>
@@ -575,10 +596,34 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity }:
               </div>
               {brand.lobbyLastChecked && <p className="text-[9px] text-gray-600 mt-1">Last: {fmtDateTime(brand.lobbyLastChecked)}</p>}
             </div>
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">Games Deployed</label>
-              <input type="number" value={brand.gamesDeployed ?? ""} onChange={(e) => updateField("gamesDeployed", e.target.value ? parseInt(e.target.value) : undefined)}
-                className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" placeholder="0" />
+            <div className="col-span-2">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+                Games Deployed {brand.games?.length ? `(${brand.games.length})` : ""}
+              </label>
+              {gameLibrary.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {gameLibrary.map((g) => {
+                    const active = brand.games?.includes(g);
+                    return (
+                      <button key={g} onClick={() => {
+                        const current = brand.games || [];
+                        const next = active ? current.filter((x) => x !== g) : [...current, g];
+                        onUpdate({ ...brand, games: next, gamesDeployed: next.length });
+                      }}
+                        className={`px-2 py-1 rounded-md text-[10px] font-medium border transition-all
+                          ${active ? "bg-[#CCFF00]/10 border-[#CCFF00]/30 text-[#CCFF00]" : "bg-gray-900 border-gray-800 text-gray-500 hover:border-gray-600"}`}>
+                        {active && <Check className="w-2.5 h-2.5 inline mr-0.5" />}{g}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div>
+                  <input type="number" value={brand.gamesDeployed ?? ""} onChange={(e) => updateField("gamesDeployed", e.target.value ? parseInt(e.target.value) : undefined)}
+                    className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" placeholder="0" />
+                  <p className="text-[9px] text-gray-600 mt-1">Add games in Settings to pick specific titles.</p>
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">Monthly Handle</label>
@@ -831,8 +876,8 @@ function TableView({ brands, onSelectBrand }: { brands: Brand[]; onSelectBrand: 
 const CHART_COLORS = ["#4ade80", "#60a5fa", "#fbbf24", "#9ca3af", "#f87171"];
 const AGG_COLORS = ["#CCFF00", "#60a5fa", "#f59e0b", "#a78bfa"];
 
-function DashboardView({ brands, activity, onSelectBrand }: {
-  brands: Brand[]; activity: ActivityEntry[]; onSelectBrand: (b: Brand) => void;
+function DashboardView({ brands, activity, onSelectBrand, aggregators }: {
+  brands: Brand[]; activity: ActivityEntry[]; onSelectBrand: (b: Brand) => void; aggregators: string[];
 }) {
   const statusData = STATUSES.map((s, i) => ({
     name: STATUS_CONFIG[s].label,
@@ -840,13 +885,13 @@ function DashboardView({ brands, activity, onSelectBrand }: {
     color: CHART_COLORS[i],
   })).filter((d) => d.value > 0);
 
-  const aggData = AGGREGATORS.map((a, i) => ({
+  const aggData = aggregators.map((a, i) => ({
     name: a,
     count: brands.filter((b) => b.aggregator === a).length,
     color: AGG_COLORS[i],
   })).filter((d) => d.count > 0);
 
-  const stalling = brands.filter(isStalling);
+  const stalling = brands.filter((b) => isStalling(b));
   const recentActivity = activity.slice(-10).reverse();
 
   return (
@@ -955,6 +1000,161 @@ function DashboardView({ brands, activity, onSelectBrand }: {
 }
 
 // ════════════════════════════════════════════════════════════════════
+// SETTINGS MODAL
+// ════════════════════════════════════════════════════════════════════
+function SettingsModal({ open, onClose, settings, onSave }: {
+  open: boolean; onClose: () => void; settings: AppSettings; onSave: (s: AppSettings) => void;
+}) {
+  const [draft, setDraft] = useState<AppSettings>(settings);
+  const [newAgg, setNewAgg] = useState("");
+  const [newGame, setNewGame] = useState("");
+  const [tab, setTab] = useState<"aggregators" | "games" | "alerts">("aggregators");
+
+  useEffect(() => { if (open) setDraft(settings); }, [open, settings]);
+
+  if (!open) return null;
+
+  const addAggregator = () => {
+    const v = newAgg.trim();
+    if (!v || draft.aggregators.includes(v)) return;
+    setDraft({ ...draft, aggregators: [...draft.aggregators, v] });
+    setNewAgg("");
+  };
+
+  const removeAggregator = (a: string) => {
+    if (DEFAULT_AGGREGATORS.includes(a)) return;
+    setDraft({ ...draft, aggregators: draft.aggregators.filter((x) => x !== a) });
+  };
+
+  const addGame = () => {
+    const v = newGame.trim();
+    if (!v || draft.gameLibrary.includes(v)) return;
+    setDraft({ ...draft, gameLibrary: [...draft.gameLibrary, v] });
+    setNewGame("");
+  };
+
+  const removeGame = (g: string) => {
+    setDraft({ ...draft, gameLibrary: draft.gameLibrary.filter((x) => x !== g) });
+  };
+
+  const save = () => { onSave(draft); onClose(); };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-[#111] border border-gray-800 rounded-2xl w-full max-w-lg mx-4 max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+          <h2 className="text-lg font-semibold text-white">Settings</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-white"><X className="w-5 h-5" /></button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-800">
+          {([["aggregators", "Aggregators"], ["games", "Game Library"], ["alerts", "Alerts & Defaults"]] as const).map(([k, label]) => (
+            <button key={k} onClick={() => setTab(k)}
+              className={`flex-1 px-4 py-2.5 text-xs font-medium transition-colors
+                ${tab === k ? "text-[#CCFF00] border-b-2 border-[#CCFF00]" : "text-gray-500 hover:text-gray-300"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
+          {/* Aggregators tab */}
+          {tab === "aggregators" && (
+            <>
+              <p className="text-xs text-gray-500">Manage aggregator options available across the app. Default aggregators cannot be removed.</p>
+              <div className="flex gap-2">
+                <input value={newAgg} onChange={(e) => setNewAgg(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addAggregator()}
+                  className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50"
+                  placeholder="New aggregator name..." />
+                <button onClick={addAggregator}
+                  className="px-3 py-2 rounded-lg text-sm font-medium bg-[#CCFF00] text-black hover:bg-[#b8e600]">
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                {draft.aggregators.map((a) => (
+                  <div key={a} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-900/60 border border-gray-800">
+                    <span className="text-sm text-white">{a}</span>
+                    {DEFAULT_AGGREGATORS.includes(a) ? (
+                      <span className="text-[9px] text-gray-600 uppercase tracking-wider">Default</span>
+                    ) : (
+                      <button onClick={() => removeAggregator(a)} className="text-gray-600 hover:text-red-400"><X className="w-3.5 h-3.5" /></button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Game Library tab */}
+          {tab === "games" && (
+            <>
+              <p className="text-xs text-gray-500">Define your game library. These games can then be assigned to each brand.</p>
+              <div className="flex gap-2">
+                <input value={newGame} onChange={(e) => setNewGame(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addGame()}
+                  className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50"
+                  placeholder="New game name..." />
+                <button onClick={addGame}
+                  className="px-3 py-2 rounded-lg text-sm font-medium bg-[#CCFF00] text-black hover:bg-[#b8e600]">
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              {draft.gameLibrary.length === 0 ? (
+                <p className="text-xs text-gray-600 italic py-4 text-center">No games added yet. Add your games above.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {draft.gameLibrary.map((g) => (
+                    <div key={g} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-900/60 border border-gray-800">
+                      <span className="text-sm text-white">{g}</span>
+                      <button onClick={() => removeGame(g)} className="text-gray-600 hover:text-red-400"><X className="w-3.5 h-3.5" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] text-gray-600">{draft.gameLibrary.length} game{draft.gameLibrary.length !== 1 ? "s" : ""} in library</p>
+            </>
+          )}
+
+          {/* Alerts & Defaults tab */}
+          {tab === "alerts" && (
+            <>
+              <p className="text-xs text-gray-500">Configure stalling alerts and default values for new brands.</p>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1.5">Stalling alert: Pending (days)</label>
+                <input type="number" min={1} value={draft.stallingDaysPending} onChange={(e) => setDraft({ ...draft, stallingDaysPending: parseInt(e.target.value) || 30 })}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
+                <p className="text-[10px] text-gray-600 mt-1">Brands in &quot;Pending&quot; longer than this will show a stalling warning.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1.5">Stalling alert: Confirmed (days)</label>
+                <input type="number" min={1} value={draft.stallingDaysConfirmed} onChange={(e) => setDraft({ ...draft, stallingDaysConfirmed: parseInt(e.target.value) || 14 })}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
+                <p className="text-[10px] text-gray-600 mt-1">Brands in &quot;Confirmed&quot; longer than this will show a stalling warning.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1.5">Default status for new brands</label>
+                <select value={draft.defaultStatus} onChange={(e) => setDraft({ ...draft, defaultStatus: e.target.value as BrandStatus })}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50">
+                  {STATUSES.map((s) => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
+                </select>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-800">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white">Cancel</button>
+          <button onClick={save} className="px-4 py-2 rounded-lg text-sm font-medium bg-[#CCFF00] text-black hover:bg-[#b8e600]">Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════════
 export default function BrandsPortfolio() {
@@ -970,6 +1170,8 @@ export default function BrandsPortfolio() {
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   // Load data
   useEffect(() => {
@@ -980,6 +1182,9 @@ export default function BrandsPortfolio() {
       setBrands(buildSeedBrands());
     }
     setActivity(loadFromStorage<ActivityEntry[]>(STORAGE_KEY_LOG, []));
+    const loadedSettings = { ...DEFAULT_SETTINGS, ...loadFromStorage<Partial<AppSettings>>(STORAGE_KEY_SETTINGS, {}) };
+    setSettings(loadedSettings);
+    currentSettings = loadedSettings;
     setLoaded(true);
   }, []);
 
@@ -991,6 +1196,13 @@ export default function BrandsPortfolio() {
   useEffect(() => {
     if (loaded) saveToStorage(STORAGE_KEY_LOG, activity);
   }, [activity, loaded]);
+
+  useEffect(() => {
+    if (loaded) saveToStorage(STORAGE_KEY_SETTINGS, settings);
+    currentSettings = settings;
+  }, [settings, loaded]);
+
+  const aggregators = settings.aggregators;
 
   const addActivity = useCallback((a: Omit<ActivityEntry, "id" | "timestamp">) => {
     setActivity((prev) => [...prev, { ...a, id: uid(), timestamp: now() }]);
@@ -1120,6 +1332,9 @@ export default function BrandsPortfolio() {
           <button onClick={resetData} className="p-2 rounded-lg border border-gray-800 text-gray-500 hover:text-red-400 hover:border-red-500/30 transition-all" title="Reset data">
             <RefreshCw className="w-4 h-4" />
           </button>
+          <button onClick={() => setShowSettings(true)} className="p-2 rounded-lg border border-gray-800 text-gray-500 hover:text-[#CCFF00] hover:border-[#CCFF00]/30 transition-all" title="Settings">
+            <Settings className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -1138,7 +1353,7 @@ export default function BrandsPortfolio() {
           className={`bg-gray-900/60 border rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-[#CCFF00]/40
             ${aggFilter !== "all" ? "border-[#CCFF00]/30 text-[#CCFF00]" : "border-gray-800 text-gray-400"}`}>
           <option value="all">All Aggregators</option>
-          {AGGREGATORS.map((a) => <option key={a} value={a}>{a}</option>)}
+          {aggregators.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
         {/* Lobby */}
         <select value={lobbyFilter} onChange={(e) => setLobbyFilter(e.target.value as LobbyStatus | "all")}
@@ -1175,12 +1390,13 @@ export default function BrandsPortfolio() {
         <TableView brands={filtered} onSelectBrand={setSelectedBrand} />
       )}
       {view === "dashboard" && (
-        <DashboardView brands={filtered} activity={activity} onSelectBrand={setSelectedBrand} />
+        <DashboardView brands={filtered} activity={activity} onSelectBrand={setSelectedBrand} aggregators={aggregators} />
       )}
 
       {/* ── Modals ──────────────────────────────────────────────────── */}
-      <AddBrandModal open={showAddModal} onClose={() => setShowAddModal(false)} onAdd={addBrand} existingNames={existingNames} />
-      <CSVImportModal open={showImportModal} onClose={() => setShowImportModal(false)} onImport={importBrands} />
+      <AddBrandModal open={showAddModal} onClose={() => setShowAddModal(false)} onAdd={addBrand} existingNames={existingNames} aggregators={aggregators} defaultStatus={settings.defaultStatus} />
+      <CSVImportModal open={showImportModal} onClose={() => setShowImportModal(false)} onImport={importBrands} aggregators={aggregators} />
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} settings={settings} onSave={setSettings} />
 
       {/* ── Detail panel ────────────────────────────────────────────── */}
       {selectedBrand && (
@@ -1190,6 +1406,8 @@ export default function BrandsPortfolio() {
           onUpdate={updateBrand}
           onDelete={deleteBrand}
           onAddActivity={addActivity}
+          aggregators={aggregators}
+          gameLibrary={settings.gameLibrary}
         />
       )}
 
