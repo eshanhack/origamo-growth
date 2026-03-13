@@ -1415,8 +1415,32 @@ export default function BrandsPortfolio() {
     );
   }
 
+  const revenueMetrics = useMemo(() => {
+    const sumFees = (statuses: BrandStatus[]) =>
+      brands.filter((b) => statuses.includes(b.status)).reduce((s, b) => s + (b.monthlyFees ?? 0), 0);
+    const liveMRR = sumFees(["live"]);
+    const pipelineMRR = sumFees(["live", "confirmed", "pending"]);
+    return { arr: liveMRR * 12, mrr: liveMRR, pipelineARR: pipelineMRR * 12, pipelineMRR };
+  }, [brands]);
+
   return (
     <div className="space-y-4 pb-6">
+      {/* ── Revenue cards ─────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {([
+          { label: "ARR", value: revenueMetrics.arr, color: "text-[#CCFF00]", sub: "Live brands" },
+          { label: "MRR", value: revenueMetrics.mrr, color: "text-[#CCFF00]", sub: "Live brands" },
+          { label: "Pipeline ARR", value: revenueMetrics.pipelineARR, color: "text-blue-400", sub: "Live + Confirmed + Pending" },
+          { label: "Pipeline MRR", value: revenueMetrics.pipelineMRR, color: "text-blue-400", sub: "Live + Confirmed + Pending" },
+        ] as const).map((m) => (
+          <div key={m.label} className="bg-gray-900/40 border border-gray-800 rounded-xl px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{m.label}</p>
+            <p className={`text-xl font-bold mt-1 ${m.color}`}>{m.value > 0 ? fmtCurrency(m.value) : "$0"}</p>
+            <p className="text-[9px] text-gray-600 mt-0.5">{m.sub}</p>
+          </div>
+        ))}
+      </div>
+
       {/* ── Toolbar ─────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
         {/* Search */}
