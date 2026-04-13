@@ -79,7 +79,6 @@ interface Brand {
   region?: string;
   prevMonthlyVolume?: number;
   lastTouched?: string;
-  categories?: BrandCategory[];
   order?: number;
 }
 
@@ -939,19 +938,20 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
               className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
           </div>
 
-          {/* Categories */}
+          {/* Categories (stored as tags under the hood) */}
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-2">Categories</label>
             <div className="flex flex-wrap gap-1.5">
               {CATEGORY_OPTIONS.map((cat) => {
                 const cfg = CATEGORY_CONFIG[cat];
-                const active = brand.categories?.includes(cat) ?? false;
+                const active = brand.tags.some((t) => t.toLowerCase() === cat);
                 return (
                   <button key={cat}
                     onClick={() => {
-                      const current = brand.categories ?? [];
-                      const next = active ? current.filter((c) => c !== cat) : [...current, cat];
-                      updateField("categories", next.length > 0 ? next : undefined);
+                      const next = active
+                        ? brand.tags.filter((t) => t.toLowerCase() !== cat)
+                        : [...brand.tags, cat];
+                      updateField("tags", next);
                     }}
                     className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all
                       ${active ? `${cfg.bg} ${cfg.color} ${cfg.border}` : "bg-gray-900 border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700"}`}>
@@ -960,7 +960,7 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
                 );
               })}
             </div>
-            <p className="text-[9px] text-gray-600 mt-1.5">Used for filtering in the kanban and table view.</p>
+            <p className="text-[9px] text-gray-600 mt-1.5">Stored as tags — used for filtering in the kanban and table view.</p>
           </div>
 
           {/* Tags */}
@@ -1153,8 +1153,8 @@ function KanbanView({ brands, onSelectBrand, onStatusChange, sortMode, onReorder
                             {fmtCurrency(brand.monthlyFees * 12)} Fees/Year
                           </span>
                         )}
-                        {brand.monthlyFees && brand.status === "confirmed" && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-blue-500/10 text-blue-400">
+                        {brand.monthlyFees && (brand.status === "confirmed" || brand.status === "pending") && (
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${brand.status === "confirmed" ? "bg-blue-500/10 text-blue-400" : "bg-amber-500/10 text-amber-400"}`}>
                             {fmtCurrency(brand.monthlyFees * 12)} Est/Year
                           </span>
                         )}
@@ -1807,11 +1807,12 @@ export default function BrandsPortfolio() {
     if (categoryFilters.size > 0) {
       const activeFilters = Array.from(categoryFilters);
       result = result.filter((b) => {
+        const lowerTags = b.tags.map((t) => t.toLowerCase());
         return activeFilters.some((f) => {
           if (f === "flagship") {
             return (b.monthlyFees ?? 0) * 12 > FLAGSHIP_THRESHOLD;
           }
-          return b.categories?.includes(f) ?? false;
+          return lowerTags.includes(f);
         });
       });
     }
