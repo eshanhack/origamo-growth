@@ -68,10 +68,13 @@ export default function GrowthChart({
   color,
   valueStyle = "number",
 }: Props) {
-  const chartData = data.map((d) => ({
+  const chartData = data.map((d, i) => ({
     label: d.label,
     value: d[metric] as number,
-    mom: d.growth[metric as keyof typeof d.growth],
+    // Skip MoM% for the first two points: index 0 has no previous month
+    // so it's already null, and index 1's MoM compares against a small
+    // baseline which produces an absurdly high % that skews the axis.
+    mom: i <= 1 ? null : d.growth[metric as keyof typeof d.growth],
     isIncomplete: !!d.isIncomplete,
   }));
 
