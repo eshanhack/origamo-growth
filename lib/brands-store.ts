@@ -19,12 +19,15 @@ const EMPTY_STATE: BrandsState = {
   settings: null,
 };
 
-// ─── Vercel KV (Upstash Redis) ──────────────────────────────────────────────
-// On Vercel we use KV as the source of truth so every serverless instance
-// (and every device) sees the same state. Locally, where these env vars
-// usually aren't set, we fall back to /tmp so the dev loop keeps working.
-const KV_URL = process.env.KV_REST_API_URL;
-const KV_TOKEN = process.env.KV_REST_API_TOKEN;
+// ─── Vercel KV / Upstash Redis ──────────────────────────────────────────────
+// On Vercel we use a Redis-backed REST API as the source of truth so every
+// serverless instance (and every device) sees the same state. We accept
+// both the legacy Vercel KV env var names and the current Upstash names,
+// since Vercel's Storage tab now provisions Upstash directly.
+const KV_URL =
+  process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+const KV_TOKEN =
+  process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 const KV_KEY = "origamo:brands";
 
 function kvConfigured(): boolean {
