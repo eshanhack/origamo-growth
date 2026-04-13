@@ -45,9 +45,7 @@ interface Brand {
   status: BrandStatus;
   aggregator: Aggregator;
   aggregatorOther?: string;
-  contactName?: string;
-  contactEmail?: string;
-  contactTelegram?: string;
+  contact?: string;
   dateAdded: string;
   dateConfirmed?: string;
   dateLive?: string;
@@ -309,9 +307,7 @@ function buildSeedBrands(): Brand[] {
     logoUrl: s.logoUrl,
     status: s.status || "pending",
     aggregator: s.aggregator || "Hub88",
-    contactName: s.contactName,
-    contactEmail: s.contactEmail,
-    contactTelegram: s.contactTelegram,
+    contact: s.contact,
     dateAdded: s.dateAdded || d,
     dateConfirmed: s.dateConfirmed,
     dateLive: s.dateLive,
@@ -481,9 +477,7 @@ function AddBrandModal({ open, onClose, onAdd, existingNames, aggregators, defau
   const [status, setStatus] = useState<BrandStatus>(defaultStatus);
   const [aggregator, setAggregator] = useState<Aggregator>(aggregators[0] || "Hub88");
   const [aggOther, setAggOther] = useState("");
-  const [contactName, setContactName] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [contactTg, setContactTg] = useState("");
+  const [contact, setContact] = useState("");
   const [tags, setTags] = useState("");
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -510,9 +504,7 @@ function AddBrandModal({ open, onClose, onAdd, existingNames, aggregators, defau
       status,
       aggregator,
       aggregatorOther: aggregator === "Other" ? aggOther : undefined,
-      contactName: contactName || undefined,
-      contactEmail: contactEmail || undefined,
-      contactTelegram: contactTg || undefined,
+      contact: contact.trim() || undefined,
       dateAdded: n,
       dateConfirmed: status === "confirmed" || status === "live" ? n : undefined,
       dateLive: status === "live" ? n : undefined,
@@ -526,7 +518,7 @@ function AddBrandModal({ open, onClose, onAdd, existingNames, aggregators, defau
     onAdd(brand);
     onClose();
     setName(""); setUrl(""); setStatus(defaultStatus); setAggregator(aggregators[0] || "Hub88"); setAggOther("");
-    setContactName(""); setContactEmail(""); setContactTg(""); setTags(""); setNote("");
+    setContact(""); setTags(""); setNote("");
   };
 
   return (
@@ -578,11 +570,9 @@ function AddBrandModal({ open, onClose, onAdd, existingNames, aggregators, defau
           {/* Contact */}
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1.5">Contact (optional)</label>
-            <div className="grid grid-cols-3 gap-2">
-              <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Name" className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
-              <input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="Email" className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
-              <input value={contactTg} onChange={(e) => setContactTg(e.target.value)} placeholder="Telegram" className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
-            </div>
+            <input value={contact} onChange={(e) => setContact(e.target.value)}
+              placeholder="Who you're talking to — name, @telegram, or email"
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
           </div>
           {/* Tags */}
           <div>
@@ -919,14 +909,9 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
           {/* Contact */}
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-2">Contact</label>
-            <div className="grid grid-cols-3 gap-2">
-              <input value={brand.contactName ?? ""} onChange={(e) => updateField("contactName", e.target.value || undefined)} placeholder="Name"
-                className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
-              <input value={brand.contactEmail ?? ""} onChange={(e) => updateField("contactEmail", e.target.value || undefined)} placeholder="Email"
-                className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
-              <input value={brand.contactTelegram ?? ""} onChange={(e) => updateField("contactTelegram", e.target.value || undefined)} placeholder="@telegram"
-                className="bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
-            </div>
+            <input value={brand.contact ?? ""} onChange={(e) => updateField("contact", e.target.value || undefined)}
+              placeholder="Who you're talking to — name, @telegram, or email"
+              className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
           </div>
 
           {/* Tags */}
@@ -1086,6 +1071,12 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
                     </div>
                     <GripVertical className="w-3.5 h-3.5 text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5 cursor-grab" />
                   </div>
+                  {brand.contact && (
+                    <p className="text-[10px] text-gray-500 mt-2 truncate pl-[42px]" title={brand.contact}>
+                      <Users className="w-2.5 h-2.5 inline mr-1" />
+                      {brand.contact}
+                    </p>
+                  )}
                   {brand.blocker && (
                     <div className="mt-2 ml-[42px] px-2 py-1 rounded-md bg-red-500/10 border border-red-500/20">
                       <p className="text-[10px] text-red-400 truncate">
@@ -1654,7 +1645,21 @@ export default function BrandsPortfolio() {
   useEffect(() => {
     const stored = loadFromStorage<Brand[]>(STORAGE_KEY_BRANDS, []);
     if (stored.length > 0) {
-      setBrands(stored);
+      // Migrate legacy contactName/contactEmail/contactTelegram → contact (single field)
+      const migrated = stored.map((b) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const legacy = b as any;
+        if (b.contact || (!legacy.contactName && !legacy.contactEmail && !legacy.contactTelegram)) {
+          return b;
+        }
+        const combined = [legacy.contactName, legacy.contactEmail, legacy.contactTelegram]
+          .filter(Boolean)
+          .join(" · ");
+        const { contactName, contactEmail, contactTelegram, ...rest } = legacy;
+        void contactName; void contactEmail; void contactTelegram;
+        return { ...rest, contact: combined || undefined } as Brand;
+      });
+      setBrands(migrated);
     } else {
       setBrands(buildSeedBrands());
     }
@@ -1696,8 +1701,7 @@ export default function BrandsPortfolio() {
         b.name.toLowerCase().includes(q) ||
         b.tags.some((t) => t.toLowerCase().includes(q)) ||
         b.notes.some((n) => n.text.toLowerCase().includes(q)) ||
-        (b.contactName?.toLowerCase().includes(q)) ||
-        (b.contactEmail?.toLowerCase().includes(q))
+        (b.contact?.toLowerCase().includes(q))
       );
     }
     if (statusFilter !== "all") result = result.filter((b) => b.status === statusFilter);
@@ -1749,7 +1753,7 @@ export default function BrandsPortfolio() {
   const exportCSV = () => {
     const header = "Name,Website,Aggregator,Status,Contact,Tags,Lobby Status,Date Added\n";
     const rows = brands.map((b) =>
-      `"${b.name}","${b.url}","${b.aggregator}","${b.status}","${b.contactName || ""}","${b.tags.join(";")}","${b.lobbyStatus}","${b.dateAdded}"`
+      `"${b.name}","${b.url}","${b.aggregator}","${b.status}","${(b.contact || "").replace(/"/g, '""')}","${b.tags.join(";")}","${b.lobbyStatus}","${b.dateAdded}"`
     ).join("\n");
     const blob = new Blob([header + rows], { type: "text/csv" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "brands-export.csv"; a.click();
