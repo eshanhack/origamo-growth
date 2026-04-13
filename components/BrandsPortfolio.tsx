@@ -62,6 +62,7 @@ interface Brand {
   feeRate?: number;
   monthlyFees?: number;
   blocker?: string;
+  news?: string;
   region?: string;
   prevMonthlyVolume?: number;
   lastTouched?: string;
@@ -906,6 +907,15 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
             {brand.blocker && <p className="text-[9px] text-red-400/60 mt-1">This will appear on the kanban card and table view.</p>}
           </div>
 
+          {/* News */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">News</label>
+            <textarea value={brand.news ?? ""} onChange={(e) => updateField("news", e.target.value || undefined)}
+              rows={2} placeholder="Latest update, win, or announcement..."
+              className="w-full bg-gray-900 border border-green-500/30 rounded-lg px-2.5 py-1.5 text-sm text-green-300 placeholder-gray-600 focus:outline-none focus:border-green-500/50 resize-none" />
+            {brand.news && <p className="text-[9px] text-green-400/60 mt-1">This will appear on the kanban card and table view.</p>}
+          </div>
+
           {/* Contact */}
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-2">Contact</label>
@@ -1079,13 +1089,21 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
                   )}
                   {brand.blocker && (
                     <div className="mt-2 ml-[42px] px-2 py-1 rounded-md bg-red-500/10 border border-red-500/20">
-                      <p className="text-[10px] text-red-400 truncate">
-                        <AlertTriangle className="w-2.5 h-2.5 inline mr-1" />
+                      <p className="text-[10px] text-red-400 whitespace-pre-wrap break-words">
+                        <AlertTriangle className="w-2.5 h-2.5 inline mr-1 -mt-0.5" />
                         {brand.blocker}
                       </p>
                     </div>
                   )}
-                  {brand.notes.length > 0 && !brand.blocker && (
+                  {brand.news && (
+                    <div className="mt-2 ml-[42px] px-2 py-1 rounded-md bg-green-500/10 border border-green-500/20">
+                      <p className="text-[10px] text-green-400 whitespace-pre-wrap break-words">
+                        <Activity className="w-2.5 h-2.5 inline mr-1 -mt-0.5" />
+                        {brand.news}
+                      </p>
+                    </div>
+                  )}
+                  {brand.notes.length > 0 && !brand.blocker && !brand.news && (
                     <p className="text-[10px] text-gray-600 mt-2 truncate pl-[42px]">
                       <MessageSquare className="w-2.5 h-2.5 inline mr-1" />
                       {brand.notes[brand.notes.length - 1].text}
