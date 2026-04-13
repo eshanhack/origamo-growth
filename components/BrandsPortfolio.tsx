@@ -256,6 +256,7 @@ const LEGACY_STORAGE_KEY_BRANDS = "origamo-brands-v2";
 const LEGACY_STORAGE_KEY_LOG = "origamo-activity-log";
 const LEGACY_STORAGE_KEY_SETTINGS = "origamo-settings-v1";
 const MIGRATION_FLAG = "origamo-brands-migrated-v1";
+const CRYPTO_LIVE_MIGRATION_FLAG = "origamo-brands-crypto-live-v1";
 
 // Module-level settings ref so sub-components can read current settings without prop drilling
 let currentSettings: AppSettings = DEFAULT_SETTINGS;
@@ -1798,6 +1799,26 @@ export default function BrandsPortfolio() {
           initialActivity = [];
           initialSettings = { ...DEFAULT_SETTINGS };
           shouldPushUp = true;
+        }
+
+        // One-time migration: tag every live brand with "crypto".
+        // Runs once per device, idempotent — only adds the tag if it's
+        // not already present (case-insensitive).
+        const cryptoMigrated =
+          typeof window !== "undefined" && localStorage.getItem(CRYPTO_LIVE_MIGRATION_FLAG);
+        if (!cryptoMigrated) {
+          let changed = false;
+          initialBrands = initialBrands.map((b) => {
+            if (b.status !== "live") return b;
+            const hasCrypto = b.tags.some((t) => t.toLowerCase() === "crypto");
+            if (hasCrypto) return b;
+            changed = true;
+            return { ...b, tags: [...b.tags, "crypto"] };
+          });
+          if (changed) shouldPushUp = true;
+          if (typeof window !== "undefined") {
+            localStorage.setItem(CRYPTO_LIVE_MIGRATION_FLAG, new Date().toISOString());
+          }
         }
 
         if (cancelled) return;
