@@ -1,5 +1,11 @@
 import { MonthlyData, MonthlyDataWithGrowth } from "./types";
-import { fetchWeeklyRows, aggregateMonthly, MonthlyAggregate } from "./sheet";
+import {
+  fetchWeeklyRows,
+  fetchMonthlyRows,
+  aggregateMonthly,
+  MonthlyAggregate,
+  MonthlyRow,
+} from "./sheet";
 import fs from "fs";
 import path from "path";
 
@@ -187,68 +193,133 @@ function aggregateToMonthlyData(agg: MonthlyAggregate): MonthlyData {
   };
 }
 
+function monthlyRowToMonthlyData(m: MonthlyRow): MonthlyData {
+  const dateStart = `${m.year}-${String(m.month).padStart(2, "0")}-01`;
+  const dateEnd = `${m.year}-${String(m.month).padStart(2, "0")}-${String(lastDayOfMonth(m.year, m.month)).padStart(2, "0")}`;
+  const topBrands = [m.brand1, m.brand2, m.brand3].filter(Boolean) as string[];
+  return {
+    id: m.id,
+    label: `${MONTH_NAMES[m.month - 1]} ${m.year}`,
+    dateStart,
+    dateEnd,
+    mau: m.mau,
+    activeBrands: 0,
+    betsPlaced: m.betsPlaced,
+    effectiveEdge: m.effectiveEdge,
+    wager: m.wager,
+    ggr: m.ggr,
+    fees: m.fees,
+    topBrands,
+    source: "sheet",
+  };
+}
+
 /**
  * Returns the merged dataset:
- *   - Financial fields (wager, ggr, fees, bets, edge, topBrands) come from
- *     the Google Sheet when available (it's the source of truth).
- *   - Non-financial fields (mau, activeBrands, brandBreakdown) come from
+ *   - Complete months use the MoM sheet tab (one authoritative row per
+ *     month, already including MAU).
+ *   - The current (in-progress) month — not yet in the MoM tab — is
+ *     filled in from the WoW tab, aggregated from weekly rows.
+ *   - Non-financial fields (activeBrands, brandBreakdown) come from
  *     metrics.json / /tmp (manual).
  *   - If sheet fetch fails, returns local data only.
  */
 export async function getAllData(): Promise<MonthlyData[]> {
   const local = getLocalData();
 
-  let sheetMonths: MonthlyAggregate[] = [];
+  let weeklyAggregates: MonthlyAggregate[] = [];
+  let monthlyRows: MonthlyRow[] = [];
   try {
-    const rows = await fetchWeeklyRows();
-    sheetMonths = aggregateMonthly(rows);
+    const [weeklyResult, monthlyResult] = await Promise.allSettled([
+      fetchWeeklyRows().then(aggregateMonthly),
+      fetchMonthlyRows(),
+    ]);
+    if (weeklyResult.status === "fulfilled") weeklyAggregates = weeklyResult.value;
+    else console.error("[data] Weekly sheet fetch failed:", weeklyResult.reason);
+    if (monthlyResult.status === "fulfilled") monthlyRows = monthlyResult.value;
+    else console.error("[data] Monthly sheet fetch failed:", monthlyResult.reason);
   } catch (e) {
     console.error("[data] Sheet fetch failed, using local data only:", e);
+    return local;
+  }
+
+  if (weeklyAggregates.length === 0 && monthlyRows.length === 0) {
     return local;
   }
 
   const byId = new Map<string, MonthlyData>();
   for (const d of local) byId.set(d.id, d);
 
-  // Compute an MAU/maxWau ratio from months that have both a real (manual)
-  // MAU and sheet weekly data. Sheet-only months use this ratio to estimate
-  // MAU from their max weekly WAU.
+  // Compute MAU/maxWau ratio from months with both an authoritative MAU
+  // (from the MoM tab) and a weekly aggregate. Used to estimate MAU for
+  // months that only exist in the WoW tab (e.g. the in-progress month).
   const ratios: number[] = [];
-  for (const month of local) {
-    const sheet = sheetMonths.find((s) => s.id === month.id);
-    if (sheet && month.mau > 0 && sheet.maxWau > 0) {
-      ratios.push(month.mau / sheet.maxWau);
-    }
+  for (const m of monthlyRows) {
+    const w = weeklyAggregates.find((x) => x.id === m.id);
+    if (w && m.mau > 0 && w.maxWau > 0) ratios.push(m.mau / w.maxWau);
   }
   const mauRatio =
-    ratios.length > 0
-      ? ratios.reduce((a, b) => a + b, 0) / ratios.length
-      : 3.5; // fallback when no overlap exists
+    ratios.length > 0 ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 3.5;
 
-  // For each month present in the sheet, override financials.
-  // For months not yet in local, create a fresh entry with carry-forward
-  // activeBrands and a ratio-based MAU estimate.
-  const sorted = [...sheetMonths].sort((a, b) => a.id.localeCompare(b.id));
+  // Build the unified month list — MoM rows first, WoW-only months second.
+  const momIds = new Set(monthlyRows.map((m) => m.id));
+  type SortedEntry =
+    | { id: string; kind: "mom"; data: MonthlyRow }
+    | { id: string; kind: "wow"; data: MonthlyAggregate };
+  const sorted: SortedEntry[] = [
+    ...monthlyRows.map((m) => ({ id: m.id, kind: "mom" as const, data: m })),
+    ...weeklyAggregates
+      .filter((w) => !momIds.has(w.id))
+      .map((w) => ({ id: w.id, kind: "wow" as const, data: w })),
+  ].sort((a, b) => a.id.localeCompare(b.id));
+
   let carryActiveBrands = 0;
-  for (const agg of sorted) {
-    const existing = byId.get(agg.id);
-    if (existing) {
-      carryActiveBrands = existing.activeBrands || carryActiveBrands;
-      byId.set(agg.id, {
-        ...existing,
-        betsPlaced: agg.betsPlaced,
-        effectiveEdge: agg.effectiveEdge,
-        wager: agg.wager,
-        ggr: agg.ggr,
-        fees: agg.fees,
-        topBrands: agg.topBrands && agg.topBrands.length > 0 ? agg.topBrands : existing.topBrands,
-        source: existing.source === "manual" ? "manual" : "sheet",
-      });
+  for (const entry of sorted) {
+    const existing = byId.get(entry.id);
+
+    if (entry.kind === "mom") {
+      const m = entry.data;
+      const topBrands = [m.brand1, m.brand2, m.brand3].filter(Boolean) as string[];
+      if (existing) {
+        carryActiveBrands = existing.activeBrands || carryActiveBrands;
+        byId.set(entry.id, {
+          ...existing,
+          mau: m.mau,
+          betsPlaced: m.betsPlaced,
+          effectiveEdge: m.effectiveEdge,
+          wager: m.wager,
+          ggr: m.ggr,
+          fees: m.fees,
+          topBrands: topBrands.length > 0 ? topBrands : existing.topBrands,
+          source: existing.source === "manual" ? "manual" : "sheet",
+        });
+      } else {
+        const fresh = monthlyRowToMonthlyData(m);
+        fresh.activeBrands = carryActiveBrands;
+        byId.set(entry.id, fresh);
+      }
     } else {
-      const fresh = aggregateToMonthlyData(agg);
-      fresh.activeBrands = carryActiveBrands;
-      fresh.mau = Math.round(agg.maxWau * mauRatio);
-      byId.set(agg.id, fresh);
+      // WoW-aggregated month — only used when the MoM tab doesn't cover it
+      // (i.e. the current in-progress month).
+      const agg = entry.data;
+      if (existing) {
+        carryActiveBrands = existing.activeBrands || carryActiveBrands;
+        byId.set(entry.id, {
+          ...existing,
+          betsPlaced: agg.betsPlaced,
+          effectiveEdge: agg.effectiveEdge,
+          wager: agg.wager,
+          ggr: agg.ggr,
+          fees: agg.fees,
+          topBrands: agg.topBrands && agg.topBrands.length > 0 ? agg.topBrands : existing.topBrands,
+          source: existing.source === "manual" ? "manual" : "sheet",
+        });
+      } else {
+        const fresh = aggregateToMonthlyData(agg);
+        fresh.activeBrands = carryActiveBrands;
+        fresh.mau = Math.round(agg.maxWau * mauRatio);
+        byId.set(entry.id, fresh);
+      }
     }
   }
 

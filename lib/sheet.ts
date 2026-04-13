@@ -22,10 +22,31 @@
 const DEFAULT_SHEET_URL =
   "https://docs.google.com/spreadsheets/d/1Mpwcc_UZL1Z4R1d6aVsb95IM_2KLYkpXhCvOd_EhKWY/export?format=csv";
 
+// Same spreadsheet, second tab ("MoM") — pre-computed one-row-per-month totals.
+const DEFAULT_MONTHLY_SHEET_URL =
+  "https://docs.google.com/spreadsheets/d/1Mpwcc_UZL1Z4R1d6aVsb95IM_2KLYkpXhCvOd_EhKWY/export?format=csv&gid=928606044";
+
 export interface WeeklyRow {
   dateStart: Date;
   dateEnd: Date;
   wau: number;
+  effectiveEdge: number;
+  betsPlaced: number;
+  wager: number;
+  ggr: number;
+  fees: number;
+  brand1?: string;
+  brand2?: string;
+  brand3?: string;
+}
+
+export interface MonthlyRow {
+  id: string;           // yyyy-MM
+  year: number;
+  month: number;        // 1-12
+  dateStart: Date;
+  dateEnd: Date;
+  mau: number;
   effectiveEdge: number;
   betsPlaced: number;
   wager: number;
@@ -130,6 +151,47 @@ export async function fetchWeeklyRows(): Promise<WeeklyRow[]> {
       dateEnd: de,
       wau: parseNum(r[2]),
       effectiveEdge: parseNum(r[3]) / 100, // "2.35%" → 0.0235
+      betsPlaced: parseNum(r[4]),
+      wager: parseNum(r[5]),
+      ggr: parseNum(r[6]),
+      fees: parseNum(r[7]),
+      brand1: (r[8] || "").trim() || undefined,
+      brand2: (r[9] || "").trim() || undefined,
+      brand3: (r[10] || "").trim() || undefined,
+    });
+  }
+  return out;
+}
+
+/**
+ * Fetch the MoM tab, which contains one authoritative row per calendar month.
+ * Header columns mirror the weekly tab except column C is MAU (not WAU).
+ */
+export async function fetchMonthlyRows(): Promise<MonthlyRow[]> {
+  const url = process.env.METRICS_MONTHLY_SHEET_URL || DEFAULT_MONTHLY_SHEET_URL;
+  const res = await fetch(url, { next: { revalidate: 300 } });
+  if (!res.ok) {
+    throw new Error(`Monthly sheet fetch failed: ${res.status} ${res.statusText}`);
+  }
+  const text = await res.text();
+  const rows = parseCsv(text);
+  const out: MonthlyRow[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.length < 8) continue;
+    const ds = parseDmy(r[0]);
+    const de = parseDmy(r[1]);
+    if (!ds || !de) continue;
+    const year = ds.getUTCFullYear();
+    const month = ds.getUTCMonth() + 1;
+    out.push({
+      id: `${year}-${String(month).padStart(2, "0")}`,
+      year,
+      month,
+      dateStart: ds,
+      dateEnd: de,
+      mau: parseNum(r[2]),
+      effectiveEdge: parseNum(r[3]) / 100,
       betsPlaced: parseNum(r[4]),
       wager: parseNum(r[5]),
       ggr: parseNum(r[6]),
