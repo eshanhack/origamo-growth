@@ -3,7 +3,7 @@ import { getAllData, enrichWithGrowth, upsertMonth } from "@/lib/data";
 import { MonthlyData } from "@/lib/types";
 
 export async function GET() {
-  const raw = getAllData();
+  const raw = await getAllData();
   const enriched = enrichWithGrowth(raw);
   return NextResponse.json(enriched);
 }
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     body.source = body.source ?? "manual";
     upsertMonth(body);
 
-    const updated = enrichWithGrowth(getAllData());
+    const updated = enrichWithGrowth(await getAllData());
     return NextResponse.json(updated, { status: 201 });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

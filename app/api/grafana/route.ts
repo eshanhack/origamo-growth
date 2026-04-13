@@ -65,6 +65,6 @@ export async function POST(req: NextRequest) {
 
   upsertMonth(entry);
 
-  const updated = enrichWithGrowth(getAllData());
+  const updated = enrichWithGrowth(await getAllData());
   return NextResponse.json({ saved: entry, all: updated });
 }

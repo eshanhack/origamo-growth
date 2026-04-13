@@ -21,7 +21,7 @@ export interface MonthlyData {
   maxPlayerGgr?: number;  // Top single player GGR
   topBrands?: string[];   // e.g. ["Brand A", "Brand B", "Brand C"]
   brandBreakdown?: BrandPerformance[];
-  source?: "manual" | "grafana";
+  source?: "manual" | "grafana" | "sheet";
 }
 
 export interface BrandPerformance {

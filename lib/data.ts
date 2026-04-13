@@ -1,6 +1,16 @@
 import { MonthlyData, MonthlyDataWithGrowth } from "./types";
+import { fetchWeeklyRows, aggregateMonthly, MonthlyAggregate } from "./sheet";
 import fs from "fs";
 import path from "path";
+
+const MONTH_NAMES = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+function lastDayOfMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
 
 // On Vercel (and other serverless platforms) process.cwd() is read-only.
 // We write mutations to /tmp which is always writable, and seed from the
@@ -151,8 +161,86 @@ function loadData(): MonthlyData[] {
   return SEED_DATA;
 }
 
-export function getAllData(): MonthlyData[] {
+function getLocalData(): MonthlyData[] {
   return loadData().sort(
+    (a, b) => new Date(a.dateStart).getTime() - new Date(b.dateStart).getTime()
+  );
+}
+
+function aggregateToMonthlyData(agg: MonthlyAggregate): MonthlyData {
+  const dateStart = `${agg.year}-${String(agg.month).padStart(2, "0")}-01`;
+  const dateEnd = `${agg.year}-${String(agg.month).padStart(2, "0")}-${String(lastDayOfMonth(agg.year, agg.month)).padStart(2, "0")}`;
+  return {
+    id: agg.id,
+    label: `${MONTH_NAMES[agg.month - 1]} ${agg.year}`,
+    dateStart,
+    dateEnd,
+    mau: 0,
+    activeBrands: 0,
+    betsPlaced: agg.betsPlaced,
+    effectiveEdge: agg.effectiveEdge,
+    wager: agg.wager,
+    ggr: agg.ggr,
+    fees: agg.fees,
+    topBrands: agg.topBrands,
+    source: "sheet",
+  };
+}
+
+/**
+ * Returns the merged dataset:
+ *   - Financial fields (wager, ggr, fees, bets, edge, topBrands) come from
+ *     the Google Sheet when available (it's the source of truth).
+ *   - Non-financial fields (mau, activeBrands, brandBreakdown) come from
+ *     metrics.json / /tmp (manual).
+ *   - If sheet fetch fails, returns local data only.
+ */
+export async function getAllData(): Promise<MonthlyData[]> {
+  const local = getLocalData();
+
+  let sheetMonths: MonthlyAggregate[] = [];
+  try {
+    const rows = await fetchWeeklyRows();
+    sheetMonths = aggregateMonthly(rows);
+  } catch (e) {
+    console.error("[data] Sheet fetch failed, using local data only:", e);
+    return local;
+  }
+
+  const byId = new Map<string, MonthlyData>();
+  for (const d of local) byId.set(d.id, d);
+
+  // For each month present in the sheet, override financials.
+  // For months not yet in local, create a new entry with carry-forward
+  // activeBrands and max-WAU as MAU approximation.
+  const sorted = [...sheetMonths].sort((a, b) => a.id.localeCompare(b.id));
+  let carryActiveBrands = 0;
+  let carryMau = 0;
+  for (const agg of sorted) {
+    const existing = byId.get(agg.id);
+    if (existing) {
+      carryActiveBrands = existing.activeBrands || carryActiveBrands;
+      carryMau = existing.mau || carryMau;
+      byId.set(agg.id, {
+        ...existing,
+        betsPlaced: agg.betsPlaced,
+        effectiveEdge: agg.effectiveEdge,
+        wager: agg.wager,
+        ggr: agg.ggr,
+        fees: agg.fees,
+        topBrands: agg.topBrands && agg.topBrands.length > 0 ? agg.topBrands : existing.topBrands,
+        source: existing.source === "manual" ? "manual" : "sheet",
+      });
+    } else {
+      const fresh = aggregateToMonthlyData(agg);
+      fresh.activeBrands = carryActiveBrands;
+      fresh.mau = Math.max(agg.maxWau, carryMau);
+      byId.set(agg.id, fresh);
+      carryMau = fresh.mau;
+    }
+  }
+
+  return Array.from(byId.values()).sort(
     (a, b) => new Date(a.dateStart).getTime() - new Date(b.dateStart).getTime()
   );
 }
@@ -163,7 +251,7 @@ export function saveData(data: MonthlyData[]): void {
 }
 
 export function upsertMonth(entry: MonthlyData): void {
-  const all = getAllData();
+  const all = getLocalData();
   const idx = all.findIndex((d) => d.id === entry.id);
   if (idx >= 0) {
     all[idx] = entry;
