@@ -170,6 +170,31 @@ function Dashboard() {
   const changeLabel     = quarterlyMode ? "QoQ" : "MoM";
   const periodLabel     = quarterlyMode ? "Quarter" : "Month";
 
+  // Detect whether a period (month or quarter) is still in progress (today falls inside its date range).
+  const isPeriodInProgress = useCallback((row: MonthlyDataWithGrowth): boolean => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(row.dateStart);
+    const end = new Date(row.dateEnd);
+    end.setHours(23, 59, 59, 999);
+    return today >= start && today <= end;
+  }, []);
+
+  const incompleteInfo = useMemo(() => {
+    if (!selected) return null;
+    if (!isPeriodInProgress(selected)) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(selected.dateStart);
+    const end = new Date(selected.dateEnd);
+    const totalDays = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+    const daysElapsed = Math.min(
+      totalDays,
+      Math.floor((today.getTime() - start.getTime()) / 86_400_000) + 1
+    );
+    return { daysElapsed, totalDays };
+  }, [selected, isPeriodInProgress]);
+
   function financialVal(row: MonthlyDataWithGrowth, key: "wager" | "ggr" | "fees"): number {
     if (financialView === "daily")  return row.daily[key];
     if (financialView === "annual") return row.annualized[key];
@@ -247,14 +272,32 @@ function Dashboard() {
                     <select
                       value={selected?.id ?? ""}
                       onChange={(e) => setActiveId(e.target.value)}
-                      className="appearance-none bg-gray-800 border border-gray-700 text-white text-xs font-medium rounded-lg pl-3 pr-7 py-1.5 focus:outline-none focus:border-gray-500 cursor-pointer"
+                      className={clsx(
+                        "appearance-none bg-gray-800 border text-white text-xs font-medium rounded-lg pl-3 pr-7 py-1.5 focus:outline-none cursor-pointer",
+                        incompleteInfo
+                          ? "border-amber-500/50 focus:border-amber-400"
+                          : "border-gray-700 focus:border-gray-500",
+                      )}
                     >
                       {[...displayData].reverse().map((m) => (
-                        <option key={m.id} value={m.id}>{m.label}</option>
+                        <option key={m.id} value={m.id}>
+                          {m.label}{isPeriodInProgress(m) ? " (in progress)" : ""}
+                        </option>
                       ))}
                     </select>
                     <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">▾</span>
                   </div>
+
+                  {/* In-progress badge */}
+                  {incompleteInfo && (
+                    <span
+                      title={`This ${quarterlyMode ? "quarter" : "month"} is still in progress. Numbers will keep growing until it ends.`}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/40 text-amber-300 text-[10px] font-medium"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                      Incomplete · Day {incompleteInfo.daysElapsed} of {incompleteInfo.totalDays}
+                    </span>
+                  )}
 
                   {/* ── Eye toggle ── */}
                   <button
@@ -329,6 +372,22 @@ function Dashboard() {
                   ))}
                 </div>
               </div>
+
+              {/* Incomplete-period banner */}
+              {incompleteInfo && (
+                <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/20 text-amber-200/90 text-[11px]">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-400">
+                    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  <span>
+                    <strong className="text-amber-300 font-semibold">{selected?.label} is not yet complete</strong> —
+                    showing partial data from day {incompleteInfo.daysElapsed} of {incompleteInfo.totalDays}.
+                    Totals and growth will continue to change until the {quarterlyMode ? "quarter" : "month"} ends.
+                  </span>
+                </div>
+              )}
 
               {/* 6 KPI cards */}
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
