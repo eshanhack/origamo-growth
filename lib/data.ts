@@ -210,17 +210,30 @@ export async function getAllData(): Promise<MonthlyData[]> {
   const byId = new Map<string, MonthlyData>();
   for (const d of local) byId.set(d.id, d);
 
+  // Compute an MAU/maxWau ratio from months that have both a real (manual)
+  // MAU and sheet weekly data. Sheet-only months use this ratio to estimate
+  // MAU from their max weekly WAU.
+  const ratios: number[] = [];
+  for (const month of local) {
+    const sheet = sheetMonths.find((s) => s.id === month.id);
+    if (sheet && month.mau > 0 && sheet.maxWau > 0) {
+      ratios.push(month.mau / sheet.maxWau);
+    }
+  }
+  const mauRatio =
+    ratios.length > 0
+      ? ratios.reduce((a, b) => a + b, 0) / ratios.length
+      : 3.5; // fallback when no overlap exists
+
   // For each month present in the sheet, override financials.
-  // For months not yet in local, create a new entry with carry-forward
-  // activeBrands and max-WAU as MAU approximation.
+  // For months not yet in local, create a fresh entry with carry-forward
+  // activeBrands and a ratio-based MAU estimate.
   const sorted = [...sheetMonths].sort((a, b) => a.id.localeCompare(b.id));
   let carryActiveBrands = 0;
-  let carryMau = 0;
   for (const agg of sorted) {
     const existing = byId.get(agg.id);
     if (existing) {
       carryActiveBrands = existing.activeBrands || carryActiveBrands;
-      carryMau = existing.mau || carryMau;
       byId.set(agg.id, {
         ...existing,
         betsPlaced: agg.betsPlaced,
@@ -234,9 +247,8 @@ export async function getAllData(): Promise<MonthlyData[]> {
     } else {
       const fresh = aggregateToMonthlyData(agg);
       fresh.activeBrands = carryActiveBrands;
-      fresh.mau = Math.max(agg.maxWau, carryMau);
+      fresh.mau = Math.round(agg.maxWau * mauRatio);
       byId.set(agg.id, fresh);
-      carryMau = fresh.mau;
     }
   }
 
@@ -271,6 +283,13 @@ function pctChange(current: number, previous: number): number | null {
   return ((current - previous) / previous) * 100;
 }
 
+function isRangeInProgress(start: string, end: string): boolean {
+  const now = Date.now();
+  const s = new Date(start).getTime();
+  const e = new Date(end + "T23:59:59").getTime();
+  return now >= s && now <= e;
+}
+
 export function enrichWithGrowth(data: MonthlyData[]): MonthlyDataWithGrowth[] {
   return data.map((row, i) => {
     const prev = i > 0 ? data[i - 1] : null;
@@ -296,6 +315,7 @@ export function enrichWithGrowth(data: MonthlyData[]): MonthlyDataWithGrowth[] {
         ggr: row.ggr * 12,
         fees: row.fees * 12,
       },
+      isIncomplete: isRangeInProgress(row.dateStart, row.dateEnd),
     };
   });
 }

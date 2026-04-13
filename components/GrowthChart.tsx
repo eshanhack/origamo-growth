@@ -10,6 +10,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  Cell,
 } from "recharts";
 import { MonthlyDataWithGrowth } from "@/lib/types";
 import { fmt } from "@/lib/format";
@@ -29,9 +30,17 @@ const AXIS_STYLE = { fill: "#6b7280", fontSize: 11 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const CustomTooltip = ({ active, payload, label, valueStyle }: any) => {
   if (!active || !payload?.length) return null;
+  const incomplete = payload[0]?.payload?.isIncomplete;
   return (
     <div className="bg-gray-900 border border-gray-700 rounded-lg p-3 shadow-xl text-xs">
-      <p className="text-gray-300 font-semibold mb-2">{label}</p>
+      <p className="text-gray-300 font-semibold mb-2">
+        {label}
+        {incomplete && (
+          <span className="ml-1.5 text-[9px] uppercase tracking-wider text-amber-400">
+            · in progress
+          </span>
+        )}
+      </p>
       {payload.map(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (entry: any) => (
@@ -42,6 +51,11 @@ const CustomTooltip = ({ active, payload, label, valueStyle }: any) => {
               : fmt(entry.value, valueStyle ?? "number")}
           </p>
         )
+      )}
+      {incomplete && (
+        <p className="text-amber-400/80 text-[10px] mt-1.5 pt-1.5 border-t border-gray-800">
+          Period still in progress — partial data
+        </p>
       )}
     </div>
   );
@@ -58,6 +72,7 @@ export default function GrowthChart({
     label: d.label,
     value: d[metric] as number,
     mom: d.growth[metric as keyof typeof d.growth],
+    isIncomplete: !!d.isIncomplete,
   }));
 
   return (
@@ -95,7 +110,17 @@ export default function GrowthChart({
             fill={color}
             opacity={0.85}
             radius={[3, 3, 0, 0]}
-          />
+          >
+            {chartData.map((entry, i) => (
+              <Cell
+                key={i}
+                fill={entry.isIncomplete ? "transparent" : color}
+                stroke={entry.isIncomplete ? color : undefined}
+                strokeWidth={entry.isIncomplete ? 1.5 : 0}
+                strokeDasharray={entry.isIncomplete ? "4 3" : undefined}
+              />
+            ))}
+          </Bar>
           <Line
             yAxisId="right"
             type="monotone"
@@ -103,7 +128,23 @@ export default function GrowthChart({
             name="MoM%"
             stroke="#f59e0b"
             strokeWidth={2}
-            dot={{ r: 3, fill: "#f59e0b" }}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            dot={(props: any) => {
+              const { cx, cy, payload, index } = props;
+              if (cx == null || cy == null) return <g key={`dot-${index}`} />;
+              return (
+                <circle
+                  key={`dot-${index}`}
+                  cx={cx}
+                  cy={cy}
+                  r={3}
+                  fill={payload?.isIncomplete ? "transparent" : "#f59e0b"}
+                  stroke="#f59e0b"
+                  strokeWidth={payload?.isIncomplete ? 1.5 : 0}
+                  strokeDasharray={payload?.isIncomplete ? "2 2" : undefined}
+                />
+              );
+            }}
             connectNulls={false}
           />
         </ComposedChart>

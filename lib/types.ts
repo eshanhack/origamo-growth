@@ -50,6 +50,8 @@ export interface MonthlyDataWithGrowth extends MonthlyData {
     ggr: number;
     fees: number;
   };
+  /** True when today falls inside this period (still in progress). */
+  isIncomplete?: boolean;
 }
 
 export interface GrafanaConfig {
