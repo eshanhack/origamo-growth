@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import clsx from "clsx";
 
 const STORAGE_KEY = "origamo_auth";
-const PASSWORD    = "noahgami";
+const PASSWORD    = "fetacheese";
 
 export default function PasswordGate({ children }: { children: React.ReactNode }) {
   const [authed,  setAuthed]  = useState<boolean | null>(null); // null = hydrating
