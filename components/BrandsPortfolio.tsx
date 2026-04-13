@@ -1059,7 +1059,6 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
                       <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                         <TierBadge brand={brand} />
                         <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-800 text-gray-400">{brand.aggregator}</span>
-                        <DaysBadge brand={brand} />
                         <ChurnRiskBadge brand={brand} />
                         {brand.status === "live" && <TrendArrow current={brand.monthlyVolume} previous={brand.prevMonthlyVolume} />}
                         {brand.monthlyFees && brand.status === "live" && (
