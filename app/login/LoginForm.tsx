@@ -1,49 +1,47 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import clsx from "clsx";
 
-const STORAGE_KEY = "origamo_auth";
-const PASSWORD    = "fetacheese";
-
-export default function PasswordGate({ children }: { children: React.ReactNode }) {
-  const [authed,  setAuthed]  = useState<boolean | null>(null); // null = hydrating
-  const [input,   setInput]   = useState("");
-  const [error,   setError]   = useState(false);
-  const [showPw,  setShowPw]  = useState(false);
+export default function LoginForm() {
+  const [input, setInput] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [showPw, setShowPw] = useState(false);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Read localStorage only on the client
   useEffect(() => {
-    setAuthed(localStorage.getItem(STORAGE_KEY) === "1");
+    const t = setTimeout(() => inputRef.current?.focus(), 80);
+    return () => clearTimeout(t);
   }, []);
 
-  // Auto-focus input once gate is shown
-  useEffect(() => {
-    if (authed === false) {
-      const t = setTimeout(() => inputRef.current?.focus(), 80);
-      return () => clearTimeout(t);
-    }
-  }, [authed]);
-
-  function submit() {
-    if (input === PASSWORD) {
-      localStorage.setItem(STORAGE_KEY, "1");
-      setAuthed(true);
-    } else {
-      setError(true);
+  async function submit() {
+    if (busy || !input) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: input }),
+      });
+      if (res.ok) {
+        window.location.href = "/";
+        return;
+      }
+      const body = await res.json().catch(() => ({}));
+      setError(body?.error || "Incorrect password");
       setInput("");
+    } catch {
+      setError("Network error");
+    } finally {
+      setBusy(false);
     }
   }
 
-  // Still hydrating — render blank canvas so there's no flash
-  if (authed === null) return <div className="min-h-screen bg-[#0a0a0a]" />;
-  if (authed)          return <>{children}</>;
-
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4 relative overflow-hidden">
-
       {/* Ambient lime glow behind the card */}
       <div
         className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
@@ -52,7 +50,6 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
       />
 
       <div className="relative w-full max-w-[360px]">
-
         {/* Logo + wordmark */}
         <div className="flex items-center justify-center gap-3 mb-10">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -81,7 +78,10 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
               ref={inputRef}
               type={showPw ? "text" : "password"}
               value={input}
-              onChange={(e) => { setInput(e.target.value); setError(false); }}
+              onChange={(e) => {
+                setInput(e.target.value);
+                setError(null);
+              }}
               onKeyDown={(e) => e.key === "Enter" && submit()}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
@@ -92,6 +92,7 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
                 "placeholder-gray-600 focus:outline-none transition-colors pr-11",
                 error ? "border-red-500/50" : "border-gray-700 focus:border-gray-500",
               )}
+              disabled={busy}
             />
 
             {/* Show / hide password */}
@@ -124,16 +125,17 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
               error ? "opacity-100 max-h-6 mb-3" : "opacity-0 max-h-0 mb-0",
             )}
           >
-            Incorrect password
+            {error}
           </div>
 
           {/* Enter button */}
           <button
             onClick={submit}
-            className="w-full mt-2 bg-[#CCFF00] hover:bg-[#d4ff33] active:bg-[#b8e600]
+            disabled={busy}
+            className="w-full mt-2 bg-[#CCFF00] hover:bg-[#d4ff33] active:bg-[#b8e600] disabled:opacity-60
                        text-black font-semibold text-sm py-3.5 rounded-xl transition-colors"
           >
-            Enter
+            {busy ? "Signing in…" : "Enter"}
           </button>
         </div>
 

@@ -248,24 +248,24 @@ function getLastTouchedDays(brand: Brand): number {
 // ════════════════════════════════════════════════════════════════════
 // STORAGE
 // ════════════════════════════════════════════════════════════════════
-const STORAGE_KEY_BRANDS = "origamo-brands-v2";
-const STORAGE_KEY_LOG = "origamo-activity-log";
-const STORAGE_KEY_SETTINGS = "origamo-settings-v1";
+// Brand portfolio data lives on the server (see app/api/brands) so every
+// authenticated user sees the same list. We still read legacy
+// localStorage entries once on first load to migrate existing data up
+// to the server, after which localStorage is ignored.
+const LEGACY_STORAGE_KEY_BRANDS = "origamo-brands-v2";
+const LEGACY_STORAGE_KEY_LOG = "origamo-activity-log";
+const LEGACY_STORAGE_KEY_SETTINGS = "origamo-settings-v1";
+const MIGRATION_FLAG = "origamo-brands-migrated-v1";
 
 // Module-level settings ref so sub-components can read current settings without prop drilling
 let currentSettings: AppSettings = DEFAULT_SETTINGS;
 
-function loadFromStorage<T>(key: string, fallback: T): T {
+function readLegacyLocalStorage<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
   } catch { return fallback; }
-}
-
-function saveToStorage(key: string, data: unknown) {
-  if (typeof window === "undefined") return;
-  try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* quota */ }
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1741,48 +1741,124 @@ export default function BrandsPortfolio() {
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
-  // Load data
-  useEffect(() => {
-    const stored = loadFromStorage<Brand[]>(STORAGE_KEY_BRANDS, []);
-    if (stored.length > 0) {
-      // Migrate legacy contactName/contactEmail/contactTelegram → contact (single field)
-      const migrated = stored.map((b) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const legacy = b as any;
-        if (b.contact || (!legacy.contactName && !legacy.contactEmail && !legacy.contactTelegram)) {
-          return b;
-        }
-        const combined = [legacy.contactName, legacy.contactEmail, legacy.contactTelegram]
-          .filter(Boolean)
-          .join(" · ");
-        const { contactName, contactEmail, contactTelegram, ...rest } = legacy;
-        void contactName; void contactEmail; void contactTelegram;
-        return { ...rest, contact: combined || undefined } as Brand;
-      });
-      setBrands(migrated);
-    } else {
-      setBrands(buildSeedBrands());
-    }
-    setActivity(loadFromStorage<ActivityEntry[]>(STORAGE_KEY_LOG, []));
-    const loadedSettings = { ...DEFAULT_SETTINGS, ...loadFromStorage<Partial<AppSettings>>(STORAGE_KEY_SETTINGS, {}) };
-    setSettings(loadedSettings);
-    currentSettings = loadedSettings;
-    setLoaded(true);
+  // Normalise legacy brand shape (contactName/contactEmail/contactTelegram → contact)
+  const normaliseBrands = useCallback((list: Brand[]): Brand[] => {
+    return list.map((b) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const legacy = b as any;
+      if (b.contact || (!legacy.contactName && !legacy.contactEmail && !legacy.contactTelegram)) {
+        return b;
+      }
+      const combined = [legacy.contactName, legacy.contactEmail, legacy.contactTelegram]
+        .filter(Boolean)
+        .join(" · ");
+      const { contactName, contactEmail, contactTelegram, ...rest } = legacy;
+      void contactName; void contactEmail; void contactTelegram;
+      return { ...rest, contact: combined || undefined } as Brand;
+    });
   }, []);
 
-  // Persist
+  // Load data from the server. On first load, if the server has no
+  // brands yet but we still have legacy localStorage data, migrate it
+  // up once so the current device's data becomes the shared copy.
   useEffect(() => {
-    if (loaded) saveToStorage(STORAGE_KEY_BRANDS, brands);
-  }, [brands, loaded]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/brands", { cache: "no-store" });
+        if (!res.ok) throw new Error(`GET /api/brands ${res.status}`);
+        const payload = await res.json();
+        const serverBrands: Brand[] = Array.isArray(payload?.brands) ? payload.brands : [];
+        const serverActivity: ActivityEntry[] = Array.isArray(payload?.activity) ? payload.activity : [];
+        const serverSettings: Partial<AppSettings> = payload?.settings ?? {};
 
-  useEffect(() => {
-    if (loaded) saveToStorage(STORAGE_KEY_LOG, activity);
-  }, [activity, loaded]);
+        // One-time migration: if server is empty and we have legacy
+        // localStorage data, push it up so it becomes the shared state.
+        const migratedAlready = typeof window !== "undefined" && localStorage.getItem(MIGRATION_FLAG);
+        const legacyBrands = readLegacyLocalStorage<Brand[]>(LEGACY_STORAGE_KEY_BRANDS, []);
+        const legacyActivity = readLegacyLocalStorage<ActivityEntry[]>(LEGACY_STORAGE_KEY_LOG, []);
+        const legacySettings = readLegacyLocalStorage<Partial<AppSettings>>(LEGACY_STORAGE_KEY_SETTINGS, {});
 
+        let initialBrands: Brand[];
+        let initialActivity: ActivityEntry[];
+        let initialSettings: AppSettings;
+        let shouldPushUp = false;
+
+        if (serverBrands.length > 0) {
+          initialBrands = normaliseBrands(serverBrands);
+          initialActivity = serverActivity;
+          initialSettings = { ...DEFAULT_SETTINGS, ...(serverSettings as Partial<AppSettings>) };
+        } else if (!migratedAlready && legacyBrands.length > 0) {
+          initialBrands = normaliseBrands(legacyBrands);
+          initialActivity = legacyActivity;
+          initialSettings = { ...DEFAULT_SETTINGS, ...legacySettings };
+          shouldPushUp = true;
+        } else {
+          initialBrands = buildSeedBrands();
+          initialActivity = [];
+          initialSettings = { ...DEFAULT_SETTINGS };
+          shouldPushUp = true;
+        }
+
+        if (cancelled) return;
+        setBrands(initialBrands);
+        setActivity(initialActivity);
+        setSettings(initialSettings);
+        currentSettings = initialSettings;
+        setLoaded(true);
+
+        if (shouldPushUp) {
+          try {
+            await fetch("/api/brands", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                brands: initialBrands,
+                activity: initialActivity,
+                settings: initialSettings,
+              }),
+            });
+            if (typeof window !== "undefined") {
+              localStorage.setItem(MIGRATION_FLAG, new Date().toISOString());
+            }
+          } catch (e) {
+            console.error("[brands] migration push failed", e);
+          }
+        } else if (typeof window !== "undefined" && !migratedAlready) {
+          // Server already had data, so nothing to migrate — just
+          // mark the flag so we don't re-check every load.
+          localStorage.setItem(MIGRATION_FLAG, new Date().toISOString());
+        }
+      } catch (e) {
+        console.error("[brands] load failed", e);
+        if (cancelled) return;
+        // Fall back to seed so the UI still works even if the API is down
+        setBrands(buildSeedBrands());
+        setSettings(DEFAULT_SETTINGS);
+        currentSettings = DEFAULT_SETTINGS;
+        setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [normaliseBrands]);
+
+  // Persist to the server whenever any tracked state changes.
+  // Debounced so rapid edits (typing in a note, dragging cards) don't
+  // produce dozens of network round-trips.
   useEffect(() => {
-    if (loaded) saveToStorage(STORAGE_KEY_SETTINGS, settings);
+    if (!loaded) return;
     currentSettings = settings;
-  }, [settings, loaded]);
+    const t = setTimeout(() => {
+      fetch("/api/brands", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brands, activity, settings }),
+      }).catch((e) => console.error("[brands] save failed", e));
+    }, 500);
+    return () => clearTimeout(t);
+  }, [brands, activity, settings, loaded]);
 
   const aggregators = settings.aggregators;
 

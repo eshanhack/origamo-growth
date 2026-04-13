@@ -10,7 +10,6 @@ import GrowthChart from "@/components/GrowthChart";
 import DataTable from "@/components/DataTable";
 import BrandPerformanceSection from "@/components/BrandPerformanceSection";
 import GrowthInsights from "@/components/GrowthInsights";
-import PasswordGate from "@/components/PasswordGate";
 import BrandsPortfolio from "@/components/BrandsPortfolio";
 
 type FinancialView = "monthly" | "daily" | "annual";
@@ -207,7 +206,6 @@ function Dashboard() {
       : null;
 
   return (
-    <PasswordGate>
     <div className="min-h-screen bg-[#0a0a0a] text-gray-100">
 
       {/* ── Header ──────────────────────────────────────────────────── */}
@@ -488,6 +486,5 @@ function Dashboard() {
       </main>
 
     </div>
-    </PasswordGate>
   );
 }
