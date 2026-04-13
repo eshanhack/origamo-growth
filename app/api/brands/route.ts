@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // this handler has already had its session cookie verified.
 
 export async function GET() {
-  const state = loadBrandsState();
+  const state = await loadBrandsState();
   return NextResponse.json(state);
 }
 
@@ -27,7 +27,7 @@ export async function PUT(req: NextRequest) {
     );
   }
 
-  const saved = saveBrandsState({
+  const saved = await saveBrandsState({
     brands: body.brands,
     activity: Array.isArray(body.activity) ? body.activity : [],
     settings: body.settings ?? null,
