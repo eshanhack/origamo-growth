@@ -19,6 +19,19 @@ type Aggregator = string;
 type LobbyStatus = "Featured" | "Visible" | "Buried" | "Not Found" | "Unknown" | "Standalone Row" | "Top Row Homepage";
 type ViewMode = "kanban" | "table" | "dashboard";
 type BrandTier = "platinum" | "gold" | "silver" | "bronze";
+type BrandCategory = "crypto" | "fiat" | "regulated" | "grey" | "black";
+type SortMode = "manual" | "revenue" | "estRevenue";
+type CategoryFilter = BrandCategory | "flagship";
+
+const CATEGORY_OPTIONS: BrandCategory[] = ["crypto", "fiat", "regulated", "grey", "black"];
+const CATEGORY_CONFIG: Record<BrandCategory, { label: string; color: string; bg: string; border: string }> = {
+  crypto:    { label: "Crypto",    color: "text-orange-400",  bg: "bg-orange-500/10",  border: "border-orange-500/30" },
+  fiat:      { label: "Fiat",      color: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/30" },
+  regulated: { label: "Regulated", color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30" },
+  grey:      { label: "Grey",      color: "text-gray-300",    bg: "bg-gray-500/15",    border: "border-gray-500/30" },
+  black:     { label: "Black",     color: "text-purple-300",  bg: "bg-purple-500/10",  border: "border-purple-500/30" },
+};
+const FLAGSHIP_THRESHOLD = 10000; // est annual revenue > $10k
 
 interface AppSettings {
   aggregators: string[];
@@ -66,6 +79,8 @@ interface Brand {
   region?: string;
   prevMonthlyVolume?: number;
   lastTouched?: string;
+  categories?: BrandCategory[];
+  order?: number;
 }
 
 interface ActivityEntry {
@@ -924,6 +939,30 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
               className="w-full bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-[#CCFF00]/50" />
           </div>
 
+          {/* Categories */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-2">Categories</label>
+            <div className="flex flex-wrap gap-1.5">
+              {CATEGORY_OPTIONS.map((cat) => {
+                const cfg = CATEGORY_CONFIG[cat];
+                const active = brand.categories?.includes(cat) ?? false;
+                return (
+                  <button key={cat}
+                    onClick={() => {
+                      const current = brand.categories ?? [];
+                      const next = active ? current.filter((c) => c !== cat) : [...current, cat];
+                      updateField("categories", next.length > 0 ? next : undefined);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all
+                      ${active ? `${cfg.bg} ${cfg.color} ${cfg.border}` : "bg-gray-900 border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700"}`}>
+                    {cfg.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[9px] text-gray-600 mt-1.5">Used for filtering in the kanban and table view.</p>
+          </div>
+
           {/* Tags */}
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-2">Tags</label>
@@ -983,20 +1022,44 @@ function BrandDetailPanel({ brand, onClose, onUpdate, onDelete, onAddActivity, a
 // ════════════════════════════════════════════════════════════════════
 // KANBAN VIEW
 // ════════════════════════════════════════════════════════════════════
-function KanbanView({ brands, onSelectBrand, onStatusChange }: {
+function KanbanView({ brands, onSelectBrand, onStatusChange, sortMode, onReorder }: {
   brands: Brand[];
   onSelectBrand: (b: Brand) => void;
   onStatusChange: (brandId: string, newStatus: BrandStatus) => void;
+  sortMode: SortMode;
+  onReorder: (draggedId: string, targetId: string | null, targetStatus: BrandStatus) => void;
 }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<BrandStatus | null>(null);
+  const [dragOverCardId, setDragOverCardId] = useState<string | null>(null);
 
   const columns = useMemo(() => {
     const map: Record<BrandStatus, Brand[]> = { live: [], confirmed: [], pending: [], churned: [], lost: [] };
     brands.forEach((b) => map[b.status].push(b));
-    STATUSES.forEach((s) => map[s].sort((a, b) => (b.monthlyFees ?? 0) - (a.monthlyFees ?? 0)));
+    const cmp: (a: Brand, b: Brand) => number = (() => {
+      if (sortMode === "revenue") {
+        // Revenue = actual monthlyFees for live brands only
+        return (a, b) => {
+          const av = a.status === "live" ? (a.monthlyFees ?? 0) : 0;
+          const bv = b.status === "live" ? (b.monthlyFees ?? 0) : 0;
+          return bv - av;
+        };
+      }
+      if (sortMode === "estRevenue") {
+        return (a, b) => (b.monthlyFees ?? 0) - (a.monthlyFees ?? 0);
+      }
+      // Manual: use persisted order; brands without order fall to the end stably.
+      return (a, b) => {
+        const ao = a.order ?? Number.MAX_SAFE_INTEGER;
+        const bo = b.order ?? Number.MAX_SAFE_INTEGER;
+        return ao - bo;
+      };
+    })();
+    STATUSES.forEach((s) => map[s].sort(cmp));
     return map;
-  }, [brands]);
+  }, [brands, sortMode]);
+
+  const manualReorderEnabled = sortMode === "manual";
 
   const liveAnnual = useMemo(() =>
     columns.live.reduce((sum, b) => sum + (b.monthlyFees ?? 0) * 12, 0)
@@ -1018,7 +1081,19 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
               ${dragOver === status ? "border-[#CCFF00]/40 bg-[#CCFF00]/5" : "border-gray-800 bg-gray-900/20"}`}
             onDragOver={(e) => { e.preventDefault(); setDragOver(status); }}
             onDragLeave={() => setDragOver(null)}
-            onDrop={() => { if (dragId) { onStatusChange(dragId, status); setDragId(null); setDragOver(null); } }}>
+            onDrop={(e) => {
+              e.preventDefault();
+              if (!dragId) return;
+              const dragged = brands.find((x) => x.id === dragId);
+              if (!dragged) return;
+              if (manualReorderEnabled) {
+                // Append to end of this column (with optional status change)
+                onReorder(dragId, null, status);
+              } else if (dragged.status !== status) {
+                onStatusChange(dragId, status);
+              }
+              setDragId(null); setDragOver(null); setDragOverCardId(null);
+            }}>
             {/* Column header */}
             <div className="px-4 py-3 border-b border-gray-800/50">
               <div className="flex items-center gap-2">
@@ -1044,10 +1119,24 @@ function KanbanView({ brands, onSelectBrand, onStatusChange }: {
               {col.map((brand) => (
                 <div key={brand.id} draggable
                   onDragStart={() => setDragId(brand.id)}
-                  onDragEnd={() => { setDragId(null); setDragOver(null); }}
+                  onDragEnd={() => { setDragId(null); setDragOver(null); setDragOverCardId(null); }}
+                  onDragOver={(e) => {
+                    if (!manualReorderEnabled || !dragId || dragId === brand.id) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragOverCardId(brand.id);
+                  }}
+                  onDrop={(e) => {
+                    if (!manualReorderEnabled || !dragId || dragId === brand.id) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onReorder(dragId, brand.id, status);
+                    setDragId(null); setDragOver(null); setDragOverCardId(null);
+                  }}
                   onClick={() => onSelectBrand(brand)}
                   className={`group bg-[#111] border border-gray-800 rounded-xl p-3 cursor-pointer transition-all duration-150
-                    hover:border-gray-600 hover:shadow-lg ${dragId === brand.id ? "opacity-50" : ""}`}>
+                    hover:border-gray-600 hover:shadow-lg ${dragId === brand.id ? "opacity-50" : ""}
+                    ${dragOverCardId === brand.id ? "border-t-2 border-t-[#CCFF00]" : ""}`}>
                   <div className="flex items-start gap-2.5">
                     <BrandAvatar brand={brand} size="sm" />
                     <div className="flex-1 min-w-0">
@@ -1644,12 +1733,8 @@ export default function BrandsPortfolio() {
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState<ViewMode>("kanban");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<BrandStatus | "all">("all");
-  const [aggFilter, setAggFilter] = useState<Aggregator | "all">("all");
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [lobbyFilter, setLobbyFilter] = useState<LobbyStatus | "all">("all");
-  const [tierFilter, setTierFilter] = useState<BrandTier | "all">("all");
-  const [regionFilter, setRegionFilter] = useState<string | "all">("all");
+  const [categoryFilters, setCategoryFilters] = useState<Set<CategoryFilter>>(new Set());
+  const [sortMode, setSortMode] = useState<SortMode>("manual");
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -1707,7 +1792,7 @@ export default function BrandsPortfolio() {
 
   const existingNames = useMemo(() => new Set(brands.map((b) => b.name.toLowerCase())), [brands]);
 
-  // Filters
+  // Filters — OR-mode: a brand matches if it satisfies ANY selected filter chip.
   const filtered = useMemo(() => {
     let result = [...brands];
     if (search) {
@@ -1719,21 +1804,78 @@ export default function BrandsPortfolio() {
         (b.contact?.toLowerCase().includes(q))
       );
     }
-    if (statusFilter !== "all") result = result.filter((b) => b.status === statusFilter);
-    if (aggFilter !== "all") result = result.filter((b) => b.aggregator === aggFilter);
-    if (tagFilter) result = result.filter((b) => b.tags.includes(tagFilter));
-    if (lobbyFilter !== "all") result = result.filter((b) => b.lobbyStatus === lobbyFilter);
-    if (tierFilter !== "all") result = result.filter((b) => computeTier(computeHealthScore(b)) === tierFilter);
-    if (regionFilter !== "all") result = result.filter((b) => b.region === regionFilter);
+    if (categoryFilters.size > 0) {
+      const activeFilters = Array.from(categoryFilters);
+      result = result.filter((b) => {
+        return activeFilters.some((f) => {
+          if (f === "flagship") {
+            return (b.monthlyFees ?? 0) * 12 > FLAGSHIP_THRESHOLD;
+          }
+          return b.categories?.includes(f) ?? false;
+        });
+      });
+    }
     return result;
-  }, [brands, search, statusFilter, aggFilter, tagFilter, lobbyFilter, tierFilter, regionFilter]);
+  }, [brands, search, categoryFilters]);
 
-  const allTags = useMemo(() => Array.from(new Set(brands.flatMap((b) => b.tags))).sort(), [brands]);
+  const toggleCategoryFilter = (f: CategoryFilter) => {
+    setCategoryFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f); else next.add(f);
+      return next;
+    });
+  };
 
   const addBrand = (b: Brand) => {
-    setBrands((prev) => [...prev, b]);
+    setBrands((prev) => {
+      const maxOrder = prev.reduce((m, x) => Math.max(m, x.order ?? 0), 0);
+      return [...prev, { ...b, order: maxOrder + 1 }];
+    });
     addActivity({ brandName: b.name, action: "Brand added" });
   };
+
+  // Reorder a brand within the manual ordering, inserting before `targetId`.
+  // If `targetId` is null, append to the end of `targetStatus`.
+  const reorderBrand = useCallback((draggedId: string, targetId: string | null, targetStatus: BrandStatus) => {
+    setBrands((prev) => {
+      const dragged = prev.find((b) => b.id === draggedId);
+      if (!dragged) return prev;
+
+      // Ensure every brand has a numeric order (assign stable defaults if missing)
+      const withOrder: Brand[] = prev.map((b, i) => ({ ...b, order: b.order ?? i + 1 }));
+
+      // Build list for target column (excluding the dragged brand), sorted by current order
+      const colList: Brand[] = withOrder
+        .filter((b) => b.status === targetStatus && b.id !== draggedId)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+      // Determine insertion index
+      const insertAt = targetId
+        ? Math.max(0, colList.findIndex((b) => b.id === targetId))
+        : colList.length;
+
+      // Insert the dragged brand (with possibly new status) at that position
+      const updatedDragged: Brand = { ...dragged, status: targetStatus, order: dragged.order ?? 0 };
+      colList.splice(insertAt, 0, updatedDragged);
+
+      // Reassign order within the column using small increments, while leaving
+      // other columns untouched. Pack columns using a global rank by scanning
+      // every brand: we only rewrite order for the affected column.
+      const baseOrders = colList.map((_, i) => i + 1);
+      const byIdOrder = new Map<string, number>();
+      colList.forEach((b, i) => byIdOrder.set(b.id, baseOrders[i] * 1000));
+
+      return withOrder.map((b) => {
+        if (b.id === draggedId) {
+          return { ...updatedDragged, order: byIdOrder.get(b.id) ?? b.order };
+        }
+        if (b.status === targetStatus) {
+          return { ...b, order: byIdOrder.get(b.id) ?? b.order };
+        }
+        return b;
+      });
+    });
+  }, []);
 
   const updateBrand = (b: Brand) => {
     const updated = { ...b, lastTouched: now() };
@@ -1775,7 +1917,7 @@ export default function BrandsPortfolio() {
   };
 
 
-  const activeFilterCount = [statusFilter !== "all", aggFilter !== "all", tagFilter !== null, lobbyFilter !== "all", tierFilter !== "all", regionFilter !== "all"].filter(Boolean).length;
+  const activeFilterCount = categoryFilters.size;
 
   const revenueMetrics = useMemo(() => {
     const sumFees = (statuses: BrandStatus[]) =>
@@ -1852,67 +1994,57 @@ export default function BrandsPortfolio() {
         </div>
       </div>
 
-      {/* ── Filter chips ────────────────────────────────────────────── */}
+      {/* ── Filter chips & sort ─────────────────────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-600">Filters</span>
-        {/* Status */}
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as BrandStatus | "all")}
-          className={`bg-gray-900/60 border rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-[#CCFF00]/40
-            ${statusFilter !== "all" ? "border-[#CCFF00]/30 text-[#CCFF00]" : "border-gray-800 text-gray-400"}`}>
-          <option value="all">All Status</option>
-          {STATUSES.map((s) => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
-        </select>
-        {/* Aggregator */}
-        <select value={aggFilter} onChange={(e) => setAggFilter(e.target.value as Aggregator | "all")}
-          className={`bg-gray-900/60 border rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-[#CCFF00]/40
-            ${aggFilter !== "all" ? "border-[#CCFF00]/30 text-[#CCFF00]" : "border-gray-800 text-gray-400"}`}>
-          <option value="all">All Aggregators</option>
-          {aggregators.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-        {/* Lobby */}
-        <select value={lobbyFilter} onChange={(e) => setLobbyFilter(e.target.value as LobbyStatus | "all")}
-          className={`bg-gray-900/60 border rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-[#CCFF00]/40
-            ${lobbyFilter !== "all" ? "border-[#CCFF00]/30 text-[#CCFF00]" : "border-gray-800 text-gray-400"}`}>
-          <option value="all">All Lobby</option>
-          {LOBBY_STATUSES.map((l) => <option key={l} value={l}>{l}</option>)}
-        </select>
-        {/* Tier */}
-        <select value={tierFilter} onChange={(e) => setTierFilter(e.target.value as BrandTier | "all")}
-          className={`bg-gray-900/60 border rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-[#CCFF00]/40
-            ${tierFilter !== "all" ? "border-[#CCFF00]/30 text-[#CCFF00]" : "border-gray-800 text-gray-400"}`}>
-          <option value="all">All Tiers</option>
-          {(["platinum", "gold", "silver", "bronze"] as BrandTier[]).map((t) => <option key={t} value={t}>{TIER_CONFIG[t].label}</option>)}
-        </select>
-        {/* Region */}
-        <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)}
-          className={`bg-gray-900/60 border rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-[#CCFF00]/40
-            ${regionFilter !== "all" ? "border-[#CCFF00]/30 text-[#CCFF00]" : "border-gray-800 text-gray-400"}`}>
-          <option value="all">All Regions</option>
-          {settings.regions.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
-        {/* Tags */}
-        {allTags.length > 0 && (
-          <select value={tagFilter ?? ""} onChange={(e) => setTagFilter(e.target.value || null)}
-            className={`bg-gray-900/60 border rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:border-[#CCFF00]/40
-              ${tagFilter ? "border-[#CCFF00]/30 text-[#CCFF00]" : "border-gray-800 text-gray-400"}`}>
-            <option value="">All Tags</option>
-            {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        )}
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-600">Filter</span>
+        {CATEGORY_OPTIONS.map((cat) => {
+          const cfg = CATEGORY_CONFIG[cat];
+          const active = categoryFilters.has(cat);
+          return (
+            <button key={cat} onClick={() => toggleCategoryFilter(cat)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all
+                ${active ? `${cfg.bg} ${cfg.color} ${cfg.border}` : "bg-gray-900/60 border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700"}`}>
+              {cfg.label}
+            </button>
+          );
+        })}
+        <button onClick={() => toggleCategoryFilter("flagship")}
+          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all
+            ${categoryFilters.has("flagship") ? "bg-[#CCFF00]/10 text-[#CCFF00] border-[#CCFF00]/30" : "bg-gray-900/60 border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700"}`}
+          title={`Brands with estimated annual revenue > ${fmtCurrency(FLAGSHIP_THRESHOLD)}`}>
+          Flagship
+        </button>
 
         {activeFilterCount > 0 && (
-          <button onClick={() => { setStatusFilter("all"); setAggFilter("all"); setTagFilter(null); setLobbyFilter("all"); setTierFilter("all"); setRegionFilter("all"); }}
+          <button onClick={() => setCategoryFilters(new Set())}
             className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium text-red-400 hover:bg-red-500/10 transition-colors">
             <X className="w-3 h-3" /> Clear ({activeFilterCount})
           </button>
         )}
+
+        {/* Sort mode — vertical divider then three segmented buttons */}
+        <span className="ml-3 h-5 w-px bg-gray-800" />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-600">Sort</span>
+        <div className="flex items-center bg-gray-900/60 border border-gray-800 rounded-lg p-0.5">
+          {([
+            ["manual", "Manual"],
+            ["revenue", "Revenue"],
+            ["estRevenue", "Est. Revenue"],
+          ] as [SortMode, string][]).map(([mode, label]) => (
+            <button key={mode} onClick={() => setSortMode(mode)}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all
+                ${sortMode === mode ? "bg-[#CCFF00]/10 text-[#CCFF00]" : "text-gray-500 hover:text-gray-300"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
 
         <span className="ml-auto text-xs text-gray-600">{filtered.length} brand{filtered.length !== 1 ? "s" : ""}</span>
       </div>
 
       {/* ── Views ───────────────────────────────────────────────────── */}
       {view === "kanban" && (
-        <KanbanView brands={filtered} onSelectBrand={setSelectedBrand} onStatusChange={handleStatusChange} />
+        <KanbanView brands={filtered} onSelectBrand={setSelectedBrand} onStatusChange={handleStatusChange} sortMode={sortMode} onReorder={reorderBrand} />
       )}
       {view === "table" && (
         <TableView brands={filtered} onSelectBrand={setSelectedBrand} />
