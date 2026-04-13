@@ -1759,9 +1759,19 @@ export default function BrandsPortfolio() {
     });
   }, []);
 
-  // Load data from the server. On first load, if the server has no
-  // brands yet but we still have legacy localStorage data, migrate it
-  // up once so the current device's data becomes the shared copy.
+  // Load data from the server. Recovery-biased semantics:
+  //   1. Server has data → use it (normal case)
+  //   2. Server is empty but localStorage has data → RESTORE from
+  //      localStorage and push it back up. This handles the case where
+  //      /tmp gets wiped on Vercel between cold starts.
+  //   3. Server has data but localStorage has *more* → still prefer
+  //      localStorage (server probably got reset to seed). Surfaced via
+  //      a console warning so it's visible.
+  //   4. Both empty AND we've never migrated → seed in memory and push
+  //      up (true first-time bootstrap).
+  //   5. Both empty AND migration flag is already set → show empty
+  //      list, do NOT push seed (would clobber a remote that's
+  //      temporarily unreachable).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -1773,32 +1783,55 @@ export default function BrandsPortfolio() {
         const serverActivity: ActivityEntry[] = Array.isArray(payload?.activity) ? payload.activity : [];
         const serverSettings: Partial<AppSettings> = payload?.settings ?? {};
 
-        // One-time migration: if server is empty and we have legacy
-        // localStorage data, push it up so it becomes the shared state.
         const migratedAlready = typeof window !== "undefined" && localStorage.getItem(MIGRATION_FLAG);
         const legacyBrands = readLegacyLocalStorage<Brand[]>(LEGACY_STORAGE_KEY_BRANDS, []);
         const legacyActivity = readLegacyLocalStorage<ActivityEntry[]>(LEGACY_STORAGE_KEY_LOG, []);
         const legacySettings = readLegacyLocalStorage<Partial<AppSettings>>(LEGACY_STORAGE_KEY_SETTINGS, {});
 
-        let initialBrands: Brand[];
-        let initialActivity: ActivityEntry[];
-        let initialSettings: AppSettings;
+        let initialBrands: Brand[] = [];
+        let initialActivity: ActivityEntry[] = [];
+        let initialSettings: AppSettings = { ...DEFAULT_SETTINGS };
         let shouldPushUp = false;
 
-        if (serverBrands.length > 0) {
-          initialBrands = normaliseBrands(serverBrands);
-          initialActivity = serverActivity;
-          initialSettings = { ...DEFAULT_SETTINGS, ...(serverSettings as Partial<AppSettings>) };
-        } else if (!migratedAlready && legacyBrands.length > 0) {
+        if (serverBrands.length === 0 && legacyBrands.length > 0) {
+          // Server is empty but we have a local snapshot — restore it.
+          console.warn(
+            `[brands] server returned 0 brands but localStorage has ${legacyBrands.length}. Restoring from localStorage.`,
+          );
           initialBrands = normaliseBrands(legacyBrands);
           initialActivity = legacyActivity;
           initialSettings = { ...DEFAULT_SETTINGS, ...legacySettings };
           shouldPushUp = true;
-        } else {
+        } else if (legacyBrands.length > serverBrands.length && legacyBrands.length >= 5) {
+          // Server has fewer brands than our local snapshot — server was
+          // probably reset/seeded. Prefer the richer local copy.
+          console.warn(
+            `[brands] localStorage has ${legacyBrands.length} brands but server only ${serverBrands.length}. Restoring from localStorage.`,
+          );
+          initialBrands = normaliseBrands(legacyBrands);
+          initialActivity = legacyActivity;
+          initialSettings = { ...DEFAULT_SETTINGS, ...legacySettings };
+          shouldPushUp = true;
+        } else if (serverBrands.length > 0) {
+          initialBrands = normaliseBrands(serverBrands);
+          initialActivity = serverActivity;
+          initialSettings = { ...DEFAULT_SETTINGS, ...(serverSettings as Partial<AppSettings>) };
+        } else if (!migratedAlready) {
+          // True first-time bootstrap: nothing anywhere, never migrated.
           initialBrands = buildSeedBrands();
           initialActivity = [];
           initialSettings = { ...DEFAULT_SETTINGS };
           shouldPushUp = true;
+        } else {
+          // Migration already ran but nothing's here. Don't seed —
+          // overwriting an unreachable server with seed data is exactly
+          // how data loss happens. Show an empty list instead.
+          console.warn(
+            "[brands] server empty and no localStorage to recover from. Refusing to seed.",
+          );
+          initialBrands = [];
+          initialActivity = [];
+          initialSettings = { ...DEFAULT_SETTINGS };
         }
 
         // One-time migration: tag every live brand with "crypto".
@@ -1828,7 +1861,7 @@ export default function BrandsPortfolio() {
         currentSettings = initialSettings;
         setLoaded(true);
 
-        if (shouldPushUp) {
+        if (shouldPushUp && initialBrands.length > 0) {
           try {
             await fetch("/api/brands", {
               method: "PUT",
@@ -1845,7 +1878,7 @@ export default function BrandsPortfolio() {
           } catch (e) {
             console.error("[brands] migration push failed", e);
           }
-        } else if (typeof window !== "undefined" && !migratedAlready) {
+        } else if (typeof window !== "undefined" && !migratedAlready && serverBrands.length > 0) {
           // Server already had data, so nothing to migrate — just
           // mark the flag so we don't re-check every load.
           localStorage.setItem(MIGRATION_FLAG, new Date().toISOString());
@@ -1853,8 +1886,13 @@ export default function BrandsPortfolio() {
       } catch (e) {
         console.error("[brands] load failed", e);
         if (cancelled) return;
-        // Fall back to seed so the UI still works even if the API is down
-        setBrands(buildSeedBrands());
+        // API is down — try localStorage as a last-resort offline fallback.
+        const legacyBrands = readLegacyLocalStorage<Brand[]>(LEGACY_STORAGE_KEY_BRANDS, []);
+        if (legacyBrands.length > 0) {
+          setBrands(normaliseBrands(legacyBrands));
+        } else {
+          setBrands([]);
+        }
         setSettings(DEFAULT_SETTINGS);
         currentSettings = DEFAULT_SETTINGS;
         setLoaded(true);
@@ -1868,9 +1906,24 @@ export default function BrandsPortfolio() {
   // Persist to the server whenever any tracked state changes.
   // Debounced so rapid edits (typing in a note, dragging cards) don't
   // produce dozens of network round-trips.
+  //
+  // We ALSO mirror to localStorage on every change so each device has
+  // a continuously-updated local snapshot. If the server ever loses
+  // data (cold start, redeploy, etc.), the next load will detect the
+  // emptier server state and restore from the local snapshot.
   useEffect(() => {
     if (!loaded) return;
     currentSettings = settings;
+    // Synchronous local backup — fast and lossless
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(LEGACY_STORAGE_KEY_BRANDS, JSON.stringify(brands));
+        localStorage.setItem(LEGACY_STORAGE_KEY_LOG, JSON.stringify(activity));
+        localStorage.setItem(LEGACY_STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+      } catch {
+        /* quota — ignore */
+      }
+    }
     const t = setTimeout(() => {
       fetch("/api/brands", {
         method: "PUT",
