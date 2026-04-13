@@ -1734,7 +1734,7 @@ export default function BrandsPortfolio() {
   const [view, setView] = useState<ViewMode>("kanban");
   const [search, setSearch] = useState("");
   const [categoryFilters, setCategoryFilters] = useState<Set<CategoryFilter>>(new Set());
-  const [sortMode, setSortMode] = useState<SortMode>("manual");
+  const [sortMode, setSortMode] = useState<SortMode>("estRevenue");
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
