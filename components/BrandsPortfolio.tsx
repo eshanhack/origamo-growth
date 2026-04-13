@@ -1793,41 +1793,28 @@ export default function BrandsPortfolio() {
         let initialSettings: AppSettings = { ...DEFAULT_SETTINGS };
         let shouldPushUp = false;
 
-        if (serverBrands.length === 0 && legacyBrands.length > 0) {
-          // Server is empty but we have a local snapshot — restore it.
-          console.warn(
-            `[brands] server returned 0 brands but localStorage has ${legacyBrands.length}. Restoring from localStorage.`,
-          );
-          initialBrands = normaliseBrands(legacyBrands);
-          initialActivity = legacyActivity;
-          initialSettings = { ...DEFAULT_SETTINGS, ...legacySettings };
-          shouldPushUp = true;
-        } else if (legacyBrands.length > serverBrands.length && legacyBrands.length >= 5) {
-          // Server has fewer brands than our local snapshot — server was
-          // probably reset/seeded. Prefer the richer local copy.
-          console.warn(
-            `[brands] localStorage has ${legacyBrands.length} brands but server only ${serverBrands.length}. Restoring from localStorage.`,
-          );
-          initialBrands = normaliseBrands(legacyBrands);
-          initialActivity = legacyActivity;
-          initialSettings = { ...DEFAULT_SETTINGS, ...legacySettings };
-          shouldPushUp = true;
-        } else if (serverBrands.length > 0) {
+        if (serverBrands.length > 0) {
+          // Normal case: KV is the source of truth. Always use it.
           initialBrands = normaliseBrands(serverBrands);
           initialActivity = serverActivity;
           initialSettings = { ...DEFAULT_SETTINGS, ...(serverSettings as Partial<AppSettings>) };
-        } else if (!migratedAlready) {
-          // True first-time bootstrap: nothing anywhere, never migrated.
-          initialBrands = buildSeedBrands();
-          initialActivity = [];
-          initialSettings = { ...DEFAULT_SETTINGS };
+        } else if (!migratedAlready && legacyBrands.length > 0) {
+          // First-time migration path only: server is empty AND this
+          // device has never pushed its localStorage up before.
+          console.warn(
+            `[brands] first-time migration: server empty, pushing ${legacyBrands.length} brands from localStorage.`,
+          );
+          initialBrands = normaliseBrands(legacyBrands);
+          initialActivity = legacyActivity;
+          initialSettings = { ...DEFAULT_SETTINGS, ...legacySettings };
           shouldPushUp = true;
         } else {
-          // Migration already ran but nothing's here. Don't seed —
-          // overwriting an unreachable server with seed data is exactly
-          // how data loss happens. Show an empty list instead.
+          // Server is empty AND (migration flag is set OR no local data).
+          // Refuse to seed — we must never overwrite an empty server with
+          // demo data. Show an empty list. The user can click "restore
+          // from backup" (or we restore via a console command).
           console.warn(
-            "[brands] server empty and no localStorage to recover from. Refusing to seed.",
+            "[brands] server empty and either already migrated or no local data. Refusing to auto-seed.",
           );
           initialBrands = [];
           initialActivity = [];
